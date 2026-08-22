@@ -129,7 +129,7 @@ func _build_ui() -> void:
 	back_button = Button.new()
 	back_button.text = "< Back"
 	back_button.focus_mode = Control.FOCUS_NONE
-	_style_button(back_button, Color(0.1, 0.18, 0.12), 18, 14, 8)
+	CasinoUI.style_button(back_button, Color(0.1, 0.18, 0.12), 18, 14, 8)
 	back_button.pressed.connect(_on_back_pressed)
 	top_bar.add_child(back_button)
 
@@ -213,7 +213,7 @@ func _build_table_column() -> Control:
 		chip.text = "$%d" % value
 		chip.custom_minimum_size = Vector2(80, 48)
 		chip.focus_mode = Control.FOCUS_NONE
-		_style_button(chip, _chip_color(value), 20, 8, 8, 24)
+		CasinoUI.style_button(chip, _chip_color(value), 20, 8, 8, 24)
 		chip.pressed.connect(_on_chip_pressed.bind(value))
 		chip_row.add_child(chip)
 
@@ -221,7 +221,7 @@ func _build_table_column() -> Control:
 	clear_button.text = "Clear"
 	clear_button.custom_minimum_size = Vector2(80, 48)
 	clear_button.focus_mode = Control.FOCUS_NONE
-	_style_button(clear_button, Color(0.35, 0.3, 0.25), 18, 8, 8, 24)
+	CasinoUI.style_button(clear_button, Color(0.35, 0.3, 0.25), 18, 8, 8, 24)
 	clear_button.pressed.connect(_on_clear_pressed)
 	chip_row.add_child(clear_button)
 
@@ -306,7 +306,7 @@ func _build_trainer_panel() -> Control:
 		button.button_group = deck_group
 		button.custom_minimum_size = Vector2(74, 42)
 		button.focus_mode = Control.FOCUS_NONE
-		_style_button(button, Color(0.11, 0.16, 0.12), 17, 2, 2, 6)
+		CasinoUI.style_button(button, Color(0.11, 0.16, 0.12), 17, 2, 2, 6)
 		var chosen := StyleBoxFlat.new()
 		chosen.bg_color = COLOR_GOLD
 		chosen.set_corner_radius_all(6)
@@ -321,7 +321,7 @@ func _build_trainer_panel() -> Control:
 	shuffle_button = Button.new()
 	shuffle_button.text = "Shuffle the Shoe"
 	shuffle_button.focus_mode = Control.FOCUS_NONE
-	_style_button(shuffle_button, Color(0.2, 0.3, 0.55), 17, 10, 7)
+	CasinoUI.style_button(shuffle_button, Color(0.2, 0.3, 0.55), 17, 10, 7)
 	shuffle_button.pressed.connect(_on_shuffle_pressed)
 	column.add_child(shuffle_button)
 
@@ -336,7 +336,7 @@ func _build_trainer_panel() -> Control:
 
 	count_toggle = Button.new()
 	count_toggle.focus_mode = Control.FOCUS_NONE
-	_style_button(count_toggle, Color(0.15, 0.45, 0.25), 17, 10, 7)
+	CasinoUI.style_button(count_toggle, Color(0.15, 0.45, 0.25), 17, 10, 7)
 	count_toggle.pressed.connect(_on_count_toggle_pressed)
 	column.add_child(count_toggle)
 
@@ -349,7 +349,7 @@ func _build_trainer_panel() -> Control:
 	clear_count_button = Button.new()
 	clear_count_button.text = "Clear Count"
 	clear_count_button.focus_mode = Control.FOCUS_NONE
-	_style_button(clear_count_button, Color(0.35, 0.3, 0.25), 16, 10, 6)
+	CasinoUI.style_button(clear_count_button, Color(0.35, 0.3, 0.25), 16, 10, 6)
 	clear_count_button.pressed.connect(_on_clear_count_pressed)
 	column.add_child(clear_count_button)
 
@@ -358,7 +358,7 @@ func _build_trainer_panel() -> Control:
 
 	basic_toggle = Button.new()
 	basic_toggle.focus_mode = Control.FOCUS_NONE
-	_style_button(basic_toggle, Color(0.15, 0.45, 0.25), 17, 10, 7)
+	CasinoUI.style_button(basic_toggle, Color(0.15, 0.45, 0.25), 17, 10, 7)
 	basic_toggle.pressed.connect(_on_basic_toggle_pressed)
 	column.add_child(basic_toggle)
 
@@ -366,7 +366,7 @@ func _build_trainer_panel() -> Control:
 
 	deviation_toggle = Button.new()
 	deviation_toggle.focus_mode = Control.FOCUS_NONE
-	_style_button(deviation_toggle, Color(0.5, 0.32, 0.1), 17, 10, 7)
+	CasinoUI.style_button(deviation_toggle, Color(0.5, 0.32, 0.1), 17, 10, 7)
 	deviation_toggle.pressed.connect(_on_deviation_toggle_pressed)
 	column.add_child(deviation_toggle)
 
@@ -406,33 +406,10 @@ func _make_action_button(parent: Control, text: String, bg: Color, handler: Call
 	button.text = text
 	button.custom_minimum_size = Vector2(118, 50)
 	button.focus_mode = Control.FOCUS_NONE
-	_style_button(button, bg, 21, 12, 10)
+	CasinoUI.style_button(button, bg, 21, 12, 10)
 	button.pressed.connect(handler)
 	parent.add_child(button)
 	return button
-
-
-func _style_button(button: Button, bg: Color, font_size: int, pad_h: int, pad_v: int, radius: int = 8) -> void:
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = bg
-		if state == "hover":
-			sb.bg_color = bg.lightened(0.12)
-		elif state == "pressed":
-			sb.bg_color = bg.darkened(0.18)
-		elif state == "disabled":
-			sb.bg_color = bg.darkened(0.4)
-		sb.set_corner_radius_all(radius)
-		sb.content_margin_left = pad_h
-		sb.content_margin_right = pad_h
-		sb.content_margin_top = pad_v
-		sb.content_margin_bottom = pad_v
-		button.add_theme_stylebox_override(state, sb)
-	button.add_theme_font_size_override("font_size", font_size)
-	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.45))
 
 
 func _chip_color(value: int) -> Color:
