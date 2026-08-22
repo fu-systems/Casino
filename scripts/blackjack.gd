@@ -22,6 +22,9 @@ var deck: Array = []
 var player_hand: Array = []
 var dealer_hand: Array = []
 var bet := 0
+## The stake chosen before any double-down, carried over as the next
+## round's opening bet so doubling doesn't silently escalate it.
+var base_bet := 0
 var phase: int = Phase.BETTING
 var hole_hidden := true
 
@@ -362,6 +365,7 @@ func _on_deal_pressed() -> void:
 	if not Bank.withdraw(bet):
 		_set_message("Not enough chips for that bet.", COLOR_LOSE)
 		return
+	base_bet = bet
 
 	_build_deck()
 	player_hand.clear()
@@ -475,6 +479,7 @@ func _on_new_round_pressed() -> void:
 	player_hand.clear()
 	dealer_hand.clear()
 	hole_hidden = true
+	bet = base_bet
 	if bet > Bank.balance:
 		bet = 0
 	_update_bet_label()
