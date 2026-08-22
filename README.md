@@ -2,8 +2,8 @@
 
 [![Build](https://github.com/fu-systems/Casino/actions/workflows/build.yml/badge.svg)](https://github.com/fu-systems/Casino/actions/workflows/build.yml)
 
-A small casino game built with **Godot 4** — blackjack and European roulette,
-sharing one bankroll.
+A small casino game built with **Godot 4** — blackjack, European roulette,
+craps and baccarat, sharing one bankroll.
 
 ## Download a build
 
@@ -36,22 +36,24 @@ nothing is clipped:
 | 20:9 phone | 2400x1080 | 1600x720 |
 
 Roulette is the widest scene at 1258 px, so it fits the 1280 minimum with
-22 px to spare. That margin is thin enough to lose by accident, so
-`tests/layout_fits.gd` asserts every scene still fits the design viewport —
-a layout change that would clip on a 4:3 tablet fails CI instead of
-shipping. Run it with:
+22 px to spare; craps is the tallest at 663 px of the 720. Both margins are
+thin enough to lose by accident, so `tests/layout_fits.gd` asserts every
+scene still fits the design viewport — a layout change that would clip on a
+4:3 tablet fails CI instead of shipping. It runs as part of the suite:
 
 ```bash
-godot --headless --path . tests/layout_fits.tscn
+godot --headless --path . res://tests/run_all.tscn
 ```
 
 On mobile the app is locked out of portrait (sensor landscape, so it works
 held either way) and insets its UI from notches and camera cutouts via
 `scripts/safe_area.gd`.
 
-One honest caveat: the roulette number cells are ~4.8 mm on a phone —
-tappable but fiddly. Thirty-seven cells across a handset is inherently
-tight, and the real fix is a mobile-specific board layout.
+Two honest caveats, both about density rather than correctness. The roulette
+number cells are ~4.8 mm on a phone — tappable but fiddly; thirty-seven
+cells across a handset is inherently tight. The craps number grid is
+tighter still, at ~3 mm per row. In both cases the real fix is a
+mobile-specific board layout rather than a scaling tweak.
 
 ## Running from source
 
@@ -173,6 +175,93 @@ message reports where the whole run finished, not just the spin that ended
 it. The board, chips, Spin, Clear Bets, and Back are all locked while a run
 is in progress.
 
+### Craps
+
+The full table. Bets are labelled with their **house edge** on the board,
+because craps ranges from 1.41% on the pass line to 16.7% on Any 7 and that
+spread is the single most useful thing to know about it.
+
+House rules, stated on screen because they change what a bet does:
+
+- Place bets and every odds bet are **off on the come-out roll** — they
+  neither win nor lose, and wait there for a point.
+- Odds are capped **3-4-5x** (3x on the 4 and 10, 4x on the 5 and 9, 5x on
+  the 6 and 8), so the most you can win behind the line is six times it
+  whatever the point. **Max Odds** tops every odds bet up to its cap.
+- Winners are paid and come down, **except place bets and Big 6/8**, which
+  stay working until they lose. That is the real table rule, and it is what
+  makes those bets worth making.
+- Place and odds payouts **round down to the dollar**, as a dealer does. Bet
+  the 6 and 8 in multiples of $6 and the rest in multiples of $5 for the
+  full price.
+
+| Group | Bets | Pays | Edge |
+| --- | --- | --- | --- |
+| Line | Pass | 1:1 | 1.41% |
+| | Don't Pass (bar 12) | 1:1 | 1.36% |
+| Odds | behind pass, don't pass, and every come point | true price: 2:1 on 4/10, 3:2 on 5/9, 6:5 on 6/8, laid inverse for the don't | none |
+| Come | Come | 1:1 | 1.41% |
+| | Don't Come (bar 12) | 1:1 | 1.36% |
+| Place | 4, 10 | 9:5 | 6.67% |
+| | 5, 9 | 7:5 | 4.00% |
+| | 6, 8 | 7:6 | 1.52% |
+| Field | 2, 3, 4, 9, 10, 11, 12 | 1:1, the 2 pays 2:1 and the 12 pays 3:1 | 2.78% |
+| Big | Big 6, Big 8 | 1:1 | 9.09% |
+| Hardways | 4, 10 | 7:1 | 11.1% |
+| | 6, 8 | 9:1 | 9.09% |
+| Props | Any 7 | 4:1 | 16.7% |
+| | Any Craps | 7:1 | 11.1% |
+| | 2, 12 | 30:1 | 13.9% |
+| | 3, 11 | 15:1 | 11.1% |
+| | Horn (quartered over 2, 3, 11, 12) | winning quarter pays its own odds | 12.5% |
+| | C & E (halved between any craps and the yo) | winning half pays its own odds | 11.1% |
+
+#### Come bets
+
+A come bet is the pass line one roll out of step. Put it on the COME bar
+while a point is on and it wins on 7 or 11, loses to craps, and otherwise
+**travels to the number rolled** and waits there for that number to repeat.
+Tap a travelled come bet to lay odds behind it.
+
+Several can be live at once, each on its own number with its own odds, and
+one seven kills the lot. Don't come is the mirror: it travels the same way,
+wins on the seven, and bars the twelve.
+
+Come chips can't be placed straight onto a number — they have to win their
+way over from the bar, which is why tapping a number's COME cell takes odds
+rather than placing a new bet.
+
+### Baccarat
+
+Punto Banco: eight decks, no decisions. Back the **Player**, the **Banker**
+or a **Tie**, plus either pair side bet, and the tableau does the rest.
+
+- Aces count one, pips at face value, tens and courts nothing; a hand's
+  total is its cards **modulo ten**, so 7 + 8 is 5.
+- An **8 or 9 on either side is a natural** and ends the hand where it
+  stands.
+- The player draws on 0-5 and stands on 6-7.
+- The banker follows the fixed tableau: 0-2 always draws, 3 unless the
+  player's third card was an 8, 4 on a player third of 2-7, 5 on 4-7, 6 on
+  6-7, and 7 stands. With the player standing it simply draws on 0-5.
+
+| Bet | Pays |
+| --- | --- |
+| Player | 1:1 |
+| Banker | 1:1 **less 5% commission** |
+| Tie | 8:1 (Player and Banker push) |
+| Player Pair / Banker Pair | 11:1 |
+
+Commission is taken out of the winnings and **rounded to the nearest
+dollar**, and the result line always names it, so a $100 banker win reads as
++$95 with the $5 accounted for rather than silently missing.
+
+Pairs are by **rank, not value** — a king and a ten both count zero but are
+not a pair.
+
+The shoe reshuffles at the same 25% cut card as blackjack, and the card
+count is shown under the table.
+
 ## Project layout
 
 | Path | Purpose |
@@ -183,14 +272,44 @@ is in progress.
 | `scripts/blackjack_strategy.gd` | Hi-Lo values, basic strategy, and count index plays |
 | `scripts/roulette.gd` + `scenes/roulette.tscn` | Roulette table |
 | `scripts/roulette_wheel.gd` | Custom-drawn spinning wheel |
+| `scripts/craps.gd` + `scenes/craps.tscn` | Craps table, dice, and proposition box |
+| `scripts/baccarat.gd` + `scenes/baccarat.tscn` | Baccarat table and drawing tableau |
+| `scripts/casino_ui.gd` | Shared button and panel styling |
+| `scripts/bet_board.gd` | Shared chip-placement board used by roulette, craps and baccarat |
 | `scripts/safe_area.gd` | Notch/cutout-aware margin container |
-| `tests/layout_fits.gd` | Asserts every scene fits the design viewport |
+| `tests/run_all.gd` + `tests/*_rules.gd` | Rule suites, run by CI |
 | `export_presets.cfg` | Linux, Windows, and Android export presets used by CI |
 | `.github/workflows/build.yml` | Check, export, and release pipeline |
 | `.github/actions/setup-godot/` | Composite action that installs Godot + templates |
 
 All UI is built in code from plain Control nodes, so there are no binary
 assets — the whole game is readable GDScript.
+
+## The rule suites
+
+`tests/run_all.tscn` drives the real scenes rather than a copy of the rules,
+so a suite passing means the shipped game behaves. CI runs it on every push;
+locally it is one command:
+
+```bash
+godot --headless --path . res://tests/run_all.tscn
+```
+
+| Suite | What it pins down |
+| --- | --- |
+| `layout_fits` | Every scene fits the 1280x720 design viewport |
+| `blackjack_rules` | Shoe composition, the Hi-Lo count against the undealt remainder, both strategy charts and their indices, split stakes, split aces, insurance |
+| `roulette_rules` | Wheel order and colours, the board covering 1-36 once, payouts, and every way a repeat-until-win run can stop |
+| `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, and what a seven-out takes |
+| `baccarat_rules` | All 80 cells of the banker tableau, naturals, pair detection, and commission arithmetic |
+
+Two of those are worth calling out. The craps suite rolls the dice 180,000
+times and checks the histogram against the real 2d6 distribution, because
+`randi() % 11 + 2` is uniform over 2-12, looks entirely reasonable, and
+would quietly make it a different game. The baccarat suite checks the banker
+tableau exhaustively against an independently restated copy of the published
+table, because the tableau *is* the game and one wrong cell would be
+invisible in play.
 
 ## Building locally
 
@@ -211,8 +330,9 @@ godot --headless --path . --export-release "Windows" "$PWD/build/Casino.exe"
 `.github/workflows/build.yml` runs on every push, pull request, and manually
 via *Run workflow*:
 
-1. **Check** — imports the project and boots it headless, failing the build on
-   any parse or runtime script error.
+1. **Check** — imports the project, boots it headless, and runs the rule
+   suites, failing the build on any parse error, runtime error, or broken
+   rule.
 2. **Export** — builds Linux and Windows in parallel and uploads each as an
    artifact.
 3. **Export Android** — builds a debug-signed APK. Godot reads the SDK
