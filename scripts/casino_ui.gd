@@ -13,9 +13,11 @@ const STATES := ["normal", "hover", "pressed", "disabled"]
 
 
 ## Paints a button in the house style: a flat rounded box per state, white
-## label, dimmed when disabled.
+## label, dimmed when disabled. Pass `border` to outline it — the lobby
+## buttons are gold-edged, the in-game ones are not.
 static func style_button(button: Button, bg: Color, font_size: int,
-		pad_h: int, pad_v: int, radius: int = 8) -> void:
+		pad_h: int, pad_v: int, radius: int = 8,
+		border: Color = Color(0, 0, 0, 0)) -> void:
 	for state in STATES:
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = bg
@@ -26,6 +28,9 @@ static func style_button(button: Button, bg: Color, font_size: int,
 		elif state == "disabled":
 			sb.bg_color = bg.darkened(DISABLED_DARKEN)
 		sb.set_corner_radius_all(radius)
+		if border.a > 0.0:
+			sb.border_color = border
+			sb.set_border_width_all(2)
 		sb.content_margin_left = pad_h
 		sb.content_margin_right = pad_h
 		sb.content_margin_top = pad_v

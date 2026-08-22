@@ -25,16 +25,12 @@ func run() -> void:
 
 func _stake(key: String, amount: int) -> void:
 	# Bets are pre-paid on the board, so mirror what clicking it does.
-	Bank.withdraw(amount)
-	t.bets[key].amount = amount
-	t._update_chip_badge(key)
+	t.board.place(key, amount)
 	t._update_totals()
 
 
 func _clear_board() -> void:
-	for key in t.bets:
-		t.bets[key].amount = 0
-		t._update_chip_badge(key)
+	t.board.clear_all()
 	t._update_totals()
 
 
@@ -83,21 +79,21 @@ func _test_board_coverage() -> void:
 
 	# Outside bets must partition the board correctly, and none may cover zero.
 	for key in ["red", "black", "even", "odd", "low", "high"]:
-		var numbers: Array = t.bets[key].numbers
+		var numbers: Array = t.board.meta(key).numbers
 		check(numbers.size() == 18, "%s should cover 18 numbers, covers %d" % [key, numbers.size()])
 		check(not (0 in numbers), "%s must not cover the zero" % key)
 	for i in 3:
-		check(t.bets["dozen_%d" % i].numbers.size() == 12, "dozen %d should cover 12 numbers" % i)
-		check(t.bets["column_%d" % i].numbers.size() == 12, "column %d should cover 12 numbers" % i)
+		check(t.board.meta("dozen_%d" % i).numbers.size() == 12, "dozen %d should cover 12 numbers" % i)
+		check(t.board.meta("column_%d" % i).numbers.size() == 12, "column %d should cover 12 numbers" % i)
 	note("board covers 1-36 once, outside bets are 18s and exclude the zero")
 
 
 func _test_payout_table() -> void:
-	check(int(t.bets["straight_17"].payout) == 35, "a straight bet pays 35:1")
-	check(int(t.bets["dozen_0"].payout) == 2, "a dozen pays 2:1")
-	check(int(t.bets["column_0"].payout) == 2, "a column pays 2:1")
+	check(int(t.board.meta("straight_17").payout) == 35, "a straight bet pays 35:1")
+	check(int(t.board.meta("dozen_0").payout) == 2, "a dozen pays 2:1")
+	check(int(t.board.meta("column_0").payout) == 2, "a column pays 2:1")
 	for key in ["red", "black", "even", "odd", "low", "high"]:
-		check(int(t.bets[key].payout) == 1, "%s pays 1:1" % key)
+		check(int(t.board.meta(key).payout) == 1, "%s pays 1:1" % key)
 	note("payouts: 35:1 straight, 2:1 dozens and columns, 1:1 even money")
 
 
@@ -116,7 +112,7 @@ func _test_replace_bets() -> void:
 	var before: int = Bank.balance
 	check(t._replace_bets(), "re-staking should succeed when affordable")
 	check(Bank.balance == before - 35, "re-staking should take exactly $35")
-	check(int(t.bets["red"].amount) == 25 and int(t.bets["straight_7"].amount) == 10,
+	check(t.board.amount("red") == 25 and t.board.amount("straight_7") == 10,
 		"both stakes should be restored")
 	_clear_board()
 	Bank.withdraw(Bank.balance - 10)

@@ -28,8 +28,9 @@ const COLOR_OUTSIDE := Color(0.07, 0.3, 0.16)
 
 var selected_chip := 5
 var spinning := false
-## key -> {"numbers": Array, "payout": int, "amount": int, "button": Button}
-var bets := {}
+## Chips on the table. Each area's meta carries the numbers it covers and
+## what it pays.
+var board := BetBoard.new()
 var history: Array = []
 
 ## Repeat-until-win state. `repeat_template` is the layout (key -> amount)
@@ -80,7 +81,7 @@ func _build_ui() -> void:
 	back_button = Button.new()
 	back_button.text = "< Back"
 	back_button.focus_mode = Control.FOCUS_NONE
-	_style_button(back_button, Color(0.1, 0.18, 0.12), 18, 14, 8)
+	CasinoUI.style_button(back_button, Color(0.1, 0.18, 0.12), 18, 14, 8)
 	back_button.pressed.connect(_on_back_pressed)
 	top_bar.add_child(back_button)
 
@@ -200,7 +201,7 @@ func _build_board_panel() -> Control:
 		chip.button_group = chip_group
 		chip.custom_minimum_size = Vector2(76, 44)
 		chip.focus_mode = Control.FOCUS_NONE
-		_style_button(chip, Color(0.13, 0.13, 0.16), 18, 6, 6, 22)
+		CasinoUI.style_button(chip, Color(0.13, 0.13, 0.16), 18, 6, 6, 22)
 		var pressed_style := StyleBoxFlat.new()
 		pressed_style.bg_color = COLOR_GOLD
 		pressed_style.set_corner_radius_all(22)
@@ -226,7 +227,7 @@ func _build_board_panel() -> Control:
 	spin_button.text = "SPIN"
 	spin_button.custom_minimum_size = Vector2(170, 54)
 	spin_button.focus_mode = Control.FOCUS_NONE
-	_style_button(spin_button, Color(0.72, 0.55, 0.1), 24, 18, 10)
+	CasinoUI.style_button(spin_button, Color(0.72, 0.55, 0.1), 24, 18, 10)
 	spin_button.pressed.connect(_on_spin_pressed)
 	action_row.add_child(spin_button)
 
@@ -234,7 +235,7 @@ func _build_board_panel() -> Control:
 	repeat_button.text = "Repeat Until Win"
 	repeat_button.custom_minimum_size = Vector2(196, 54)
 	repeat_button.focus_mode = Control.FOCUS_NONE
-	_style_button(repeat_button, Color(0.42, 0.24, 0.52), 18, 10, 10)
+	CasinoUI.style_button(repeat_button, Color(0.42, 0.24, 0.52), 18, 10, 10)
 	repeat_button.pressed.connect(_on_repeat_pressed)
 	action_row.add_child(repeat_button)
 
@@ -242,7 +243,7 @@ func _build_board_panel() -> Control:
 	clear_button.text = "Clear Bets"
 	clear_button.custom_minimum_size = Vector2(140, 54)
 	clear_button.focus_mode = Control.FOCUS_NONE
-	_style_button(clear_button, Color(0.35, 0.3, 0.25), 20, 14, 10)
+	CasinoUI.style_button(clear_button, Color(0.35, 0.3, 0.25), 20, 14, 10)
 	clear_button.pressed.connect(_on_clear_pressed)
 	action_row.add_child(clear_button)
 
@@ -355,33 +356,10 @@ func _make_bet_button(key: String, text: String, numbers: Array, payout: int, co
 	button.text = text
 	button.custom_minimum_size = min_size
 	button.focus_mode = Control.FOCUS_NONE
-	_style_button(button, color, font_size, 2, 2, 6)
+	CasinoUI.style_button(button, color, font_size, 2, 2, 6)
 	button.pressed.connect(_on_bet_button_pressed.bind(key))
-	bets[key] = {"numbers": numbers, "payout": payout, "amount": 0, "button": button}
+	board.add(key, button, {"numbers": numbers, "payout": payout})
 	return button
-
-
-func _style_button(button: Button, bg: Color, font_size: int, pad_h: int, pad_v: int, radius: int = 8) -> void:
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = bg
-		if state == "hover":
-			sb.bg_color = bg.lightened(0.15)
-		elif state == "pressed":
-			sb.bg_color = bg.darkened(0.18)
-		elif state == "disabled":
-			sb.bg_color = bg.darkened(0.4)
-		sb.set_corner_radius_all(radius)
-		sb.content_margin_left = pad_h
-		sb.content_margin_right = pad_h
-		sb.content_margin_top = pad_v
-		sb.content_margin_bottom = pad_v
-		button.add_theme_stylebox_override(state, sb)
-	button.add_theme_font_size_override("font_size", font_size)
-	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.45))
 
 
 # --- Betting -----------------------------------------------------------------
@@ -392,11 +370,9 @@ func _on_bet_button_pressed(key: String) -> void:
 		return
 	if spinning:
 		return
-	if not Bank.withdraw(selected_chip):
+	if not board.place(key, selected_chip):
 		_set_message("Not enough balance for a $%d chip." % selected_chip, COLOR_LOSE)
 		return
-	bets[key].amount += selected_chip
-	_update_chip_badge(key)
 	_update_totals()
 	_set_message("Bet placed. Spin when ready.", Color.WHITE)
 
@@ -404,52 +380,13 @@ func _on_bet_button_pressed(key: String) -> void:
 func _on_clear_pressed() -> void:
 	if _busy():
 		return
-	var refund := 0
-	for key in bets:
-		refund += bets[key].amount
-		bets[key].amount = 0
-		_update_chip_badge(key)
-	if refund > 0:
-		Bank.deposit(refund)
+	if board.refund_all() > 0:
 		_set_message("Bets cleared and refunded.", Color.WHITE)
 	_update_totals()
 
 
-func _update_chip_badge(key: String) -> void:
-	var entry: Dictionary = bets[key]
-	var button: Button = entry.button
-	var badge: Label = button.get_node_or_null("ChipBadge")
-	if entry.amount <= 0:
-		if badge != null:
-			badge.name = "DeadBadge"
-			badge.hide()
-			badge.queue_free()
-		return
-	if badge == null:
-		badge = Label.new()
-		badge.name = "ChipBadge"
-		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = COLOR_GOLD
-		sb.set_corner_radius_all(11)
-		sb.content_margin_left = 7
-		sb.content_margin_right = 7
-		sb.content_margin_top = 2
-		sb.content_margin_bottom = 2
-		badge.add_theme_stylebox_override("normal", sb)
-		badge.add_theme_color_override("font_color", Color(0.15, 0.1, 0.0))
-		badge.add_theme_font_size_override("font_size", 12)
-		button.add_child(badge)
-	badge.text = str(entry.amount)
-	badge.reset_size()
-	badge.position = (button.size - badge.size) / 2.0
-
-
 func _total_bet() -> int:
-	var total := 0
-	for key in bets:
-		total += bets[key].amount
-	return total
+	return board.total()
 
 
 func _update_totals() -> void:
@@ -520,8 +457,7 @@ func _replace_bets() -> bool:
 	if needed <= 0 or not Bank.withdraw(needed):
 		return false
 	for key in repeat_template:
-		bets[key].amount = int(repeat_template[key])
-		_update_chip_badge(key)
+		board.move_in(key, int(repeat_template[key]))
 	_update_totals()
 	return true
 
@@ -540,10 +476,8 @@ func _on_repeat_pressed() -> void:
 		return
 
 	repeat_template.clear()
-	for key in bets:
-		var amount: int = bets[key].amount
-		if amount > 0:
-			repeat_template[key] = amount
+	for key in board.staked_keys():
+		repeat_template[key] = board.amount(key)
 
 	repeat_mode = true
 	repeat_stop = false
@@ -597,10 +531,10 @@ func _run_summary(run_net: int) -> String:
 func _resolve_spin(number: int) -> int:
 	var staked := _total_bet()
 	var returned := 0
-	for key in bets:
-		var entry: Dictionary = bets[key]
-		if entry.amount > 0 and number in entry.numbers:
-			returned += entry.amount * (entry.payout + 1)
+	for key in board.staked_keys():
+		var meta := board.meta(key)
+		if number in meta.numbers:
+			returned += board.amount(key) * (int(meta.payout) + 1)
 	if returned > 0:
 		Bank.deposit(returned)
 
@@ -616,9 +550,9 @@ func _resolve_spin(number: int) -> int:
 	else:
 		_set_message("Ball lands on %d %s — you lose $%s." % [number, color_name, Bank.fmt(-net)], COLOR_LOSE)
 
-	for key in bets:
-		bets[key].amount = 0
-		_update_chip_badge(key)
+	# The stakes were taken when the chips went down, so the board just
+	# clears rather than refunding.
+	board.clear_all()
 	_update_totals()
 	return net
 
@@ -676,12 +610,7 @@ func _on_back_pressed() -> void:
 	if _busy():
 		return
 	# Refund anything still on the table before leaving.
-	var refund := 0
-	for key in bets:
-		refund += bets[key].amount
-		bets[key].amount = 0
-	if refund > 0:
-		Bank.deposit(refund)
+	board.refund_all()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 
