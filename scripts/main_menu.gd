@@ -3,6 +3,9 @@ extends Control
 
 const COLOR_GOLD := Color(0.94, 0.78, 0.29)
 const COLOR_FELT := Color(0.05, 0.22, 0.11)
+## Two game buttons plus the gap match the width of the full-width pair.
+const GAME_SIZE := Vector2(233, 58)
+const WIDE_SIZE := Vector2(480, 58)
 
 var balance_label: Label
 
@@ -37,7 +40,7 @@ func _build_ui() -> void:
 	vbox.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Blackjack  •  Roulette"
+	subtitle.text = "Blackjack  •  Roulette  •  Craps  •  Baccarat"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 22)
 	subtitle.add_theme_color_override("font_color", Color(0.9, 0.9, 0.85))
@@ -53,31 +56,32 @@ func _build_ui() -> void:
 	spacer.custom_minimum_size = Vector2(0, 12)
 	vbox.add_child(spacer)
 
-	_add_menu_button(vbox, "Play Blackjack", Color(0.13, 0.13, 0.16), _on_blackjack_pressed)
-	_add_menu_button(vbox, "Play Roulette", Color(0.55, 0.1, 0.13), _on_roulette_pressed)
-	_add_menu_button(vbox, "Reset Balance ($%s)" % Bank.fmt(Bank.START_BALANCE), Color(0.16, 0.3, 0.2), _on_reset_pressed)
-	_add_menu_button(vbox, "Quit", Color(0.25, 0.22, 0.2), _on_quit_pressed)
+	# Four games stacked one per row would run the lobby to ~710px of the
+	# 720px design height. Two columns keeps it comfortable and leaves room
+	# for a fifth game later.
+	var games := GridContainer.new()
+	games.columns = 2
+	games.add_theme_constant_override("h_separation", 14)
+	games.add_theme_constant_override("v_separation", 14)
+	vbox.add_child(games)
+
+	_add_menu_button(games, "Blackjack", Color(0.13, 0.13, 0.16), _on_blackjack_pressed, GAME_SIZE)
+	_add_menu_button(games, "Roulette", Color(0.55, 0.1, 0.13), _on_roulette_pressed, GAME_SIZE)
+	_add_menu_button(games, "Craps", Color(0.16, 0.24, 0.45), _on_craps_pressed, GAME_SIZE)
+	_add_menu_button(games, "Baccarat", Color(0.35, 0.16, 0.4), _on_baccarat_pressed, GAME_SIZE)
+
+	_add_menu_button(vbox, "Reset Balance ($%s)" % Bank.fmt(Bank.START_BALANCE),
+		Color(0.16, 0.3, 0.2), _on_reset_pressed, WIDE_SIZE)
+	_add_menu_button(vbox, "Quit", Color(0.25, 0.22, 0.2), _on_quit_pressed, WIDE_SIZE)
 
 
-func _add_menu_button(parent: Control, text: String, bg: Color, handler: Callable) -> void:
+func _add_menu_button(parent: Control, text: String, bg: Color, handler: Callable,
+		size: Vector2) -> void:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(340, 58)
+	button.custom_minimum_size = size
 	button.focus_mode = Control.FOCUS_NONE
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = bg
-		if state == "hover":
-			sb.bg_color = bg.lightened(0.12)
-		elif state == "pressed":
-			sb.bg_color = bg.darkened(0.2)
-		sb.set_corner_radius_all(10)
-		sb.border_color = COLOR_GOLD
-		sb.set_border_width_all(2)
-		button.add_theme_stylebox_override(state, sb)
-	button.add_theme_font_size_override("font_size", 24)
-	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	CasinoUI.style_button(button, bg, 24, 16, 10, 10, COLOR_GOLD)
 	button.add_theme_color_override("font_pressed_color", COLOR_GOLD)
 	button.pressed.connect(handler)
 	parent.add_child(button)
@@ -93,6 +97,14 @@ func _on_blackjack_pressed() -> void:
 
 func _on_roulette_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/roulette.tscn")
+
+
+func _on_craps_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/craps.tscn")
+
+
+func _on_baccarat_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/baccarat.tscn")
 
 
 func _on_reset_pressed() -> void:

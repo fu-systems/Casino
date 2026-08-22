@@ -2,8 +2,8 @@ class_name BetBoard
 extends RefCounted
 ## A board of chip-takeable bet areas, shared by roulette, craps and baccarat.
 ##
-## Tracks how much is staked on each area, keeps a gold chip badge centred on
-## every button carrying a bet, and moves money through `Bank`. Stakes are
+## Tracks how much is staked on each area, keeps a gold chip badge on every
+## button carrying a bet, and moves money through `Bank`. Stakes are
 ## paid up front the moment a chip is placed, exactly as on a real table, so
 ## clearing a bet refunds it.
 ##
@@ -13,8 +13,15 @@ extends RefCounted
 const COLOR_BADGE := Color(0.94, 0.78, 0.29)
 const COLOR_BADGE_TEXT := Color(0.15, 0.1, 0.0)
 
+## Where the chip badge sits on its button. CENTRE suits bare cells like
+## roulette's numbers, where the badge standing in for the label is exactly
+## right; CORNER suits boards whose areas carry their name and price, where
+## a centred badge would sit on top of the words.
+enum Badge { CENTRE, CORNER }
+
 ## key -> {"button": Button, "amount": int, "meta": Dictionary}
 var bets := {}
+var badge_position: int = Badge.CENTRE
 
 
 ## Registers a bet area. `meta` carries whatever the game needs at resolution
@@ -115,7 +122,7 @@ func refresh_all_badges() -> void:
 		refresh_badge(key)
 
 
-## Centres a gold chip badge on the button, or removes it when the area is
+## Puts a gold chip badge on the button, or removes it when the area is
 ## empty.
 func refresh_badge(key: String) -> void:
 	var entry: Dictionary = bets[key]
@@ -151,4 +158,8 @@ func refresh_badge(key: String) -> void:
 
 	badge.text = str(int(entry.amount))
 	badge.reset_size()
-	badge.position = (button.size - badge.size) / 2.0
+	if badge_position == Badge.CORNER:
+		badge.position = Vector2(button.size.x - badge.size.x - 3,
+			button.size.y - badge.size.y - 2)
+	else:
+		badge.position = (button.size - badge.size) / 2.0

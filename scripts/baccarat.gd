@@ -296,6 +296,10 @@ func _on_back_pressed() -> void:
 # --- UI ----------------------------------------------------------------------
 
 func _build_ui() -> void:
+	# The betting areas are labelled with their odds, so chips sit in the
+	# corner rather than covering them.
+	board.badge_position = BetBoard.Badge.CORNER
+
 	var bg := ColorRect.new()
 	bg.color = COLOR_FELT
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
