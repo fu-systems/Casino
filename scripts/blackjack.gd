@@ -375,17 +375,23 @@ func _on_deal_pressed() -> void:
 	phase = Phase.PLAYER_TURN
 	_refresh_table()
 
-	if _is_blackjack(player_hand):
+	# The dealer peeks: a natural on either side ends the round before the
+	# player can act, so a dealer natural can never be pushed by a 21 the
+	# player builds from three or more cards.
+	if _is_blackjack(player_hand) or _is_blackjack(dealer_hand):
 		hole_hidden = false
 		phase = Phase.ROUND_OVER
 		_refresh_table()
-		if _is_blackjack(dealer_hand):
+		if _is_blackjack(player_hand) and _is_blackjack(dealer_hand):
 			Bank.deposit(bet)
 			_set_message("Both have blackjack — push.", COLOR_GOLD)
-		else:
-			var winnings := bet * 3 / 2
+		elif _is_blackjack(player_hand):
+			# 3:2 rounded up, so a $5 blackjack pays $8 rather than $7.
+			var winnings := roundi(bet * 1.5)
 			Bank.deposit(bet + winnings)
 			_set_message("Blackjack! You win $%s." % Bank.fmt(winnings), COLOR_WIN)
+		else:
+			_set_message("Dealer has blackjack — you lose $%s." % Bank.fmt(bet), COLOR_LOSE)
 	else:
 		_set_message("Hit or stand?", Color.WHITE)
 	_update_controls()
