@@ -34,3 +34,7 @@ window/handheld/orientation=4
 [rendering]
 
 environment/defaults/default_clear_color=Color(0.043, 0.29, 0.133, 1)
+; Required by the Android export: without it Godot rejects the preset, and
+; the check that does so appends no message, so the export fails with a
+; blank "configuration errors" list.
+textures/vram_compression/import_etc2_astc=true
