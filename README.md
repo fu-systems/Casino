@@ -35,13 +35,33 @@ it from the main menu at any time.
 ### Blackjack
 
 - Place a bet with the chip buttons, then **Deal**.
-- **Hit**, **Stand**, or **Double** (double is available on your first two
-  cards if you can cover the extra bet).
+- **Hit**, **Stand**, **Double**, or **Split**. Buttons only appear when the
+  move is legal and you can cover the extra stake.
 - Dealer stands on all 17s and peeks for a natural, so a dealer blackjack
   ends the round immediately rather than letting you draw into it.
 - Blackjack pays **3:2** (rounded up, so a $5 blackjack pays $8), wins pay
-  1:1, pushes return your bet. No splits or insurance — this is the simple
-  table.
+  1:1, pushes return your bet.
+
+#### Splitting
+
+Any two cards of matching value can be split, up to **four hands**. Each
+split hand carries its own stake and is settled against the dealer
+independently — you can win one and lose another in the same round. Doubling
+after a split is allowed, and raises only that hand's bet.
+
+Split aces get exactly **one card each** and are never re-split. A 21 built
+from a split is a plain 21, not a natural, so it pays 1:1 rather than 3:2.
+
+The active hand is outlined in gold, and every hand shows its own total and
+stake beneath it.
+
+#### Insurance
+
+When the dealer shows an ace you're offered insurance before the peek. It
+costs half your bet and pays **2:1** if the dealer turns over a natural —
+exactly cancelling the main bet you just lost. Basic strategy always
+declines it; see the count strategy panel for when it's actually worth
+taking.
 
 #### The shoe
 
@@ -82,8 +102,13 @@ Two independent show/hide panels, each giving the play and a one-line reason:
   whenever the count actually moves you off basic strategy, so deviations are
   easy to spot.
 
-Because the table can't split, pairs are advised on their total rather than
-as a split decision, and the insurance index is omitted.
+Both panels advise on the **active** hand, so after a split the advice
+follows you from hand to hand. Pairs are advised as a split decision against
+the standard double-after-split chart, and during an insurance offer the
+panels advise on that instead.
+
+The count panel implements the full **Illustrious 18**: fifteen hard-total
+deviations, the two ten-splitting ones, and insurance at true count +3.
 
 ### Roulette
 

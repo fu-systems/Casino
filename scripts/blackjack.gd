@@ -1,10 +1,12 @@
 extends Control
-## Blackjack table: betting, hit/stand/double, dealer AI, and payouts, plus a
-## card-counting and strategy trainer.
+## Blackjack table: betting, hit/stand/double/split, insurance, dealer AI and
+## payouts, plus a card-counting and strategy trainer.
 ##
-## House rules: dealer stands on all 17s, blackjack pays 3:2, double down on
-## any first two cards, no splits or insurance. Cards come from a persistent
-## 1-8 deck shoe that reshuffles once penetration passes 75%.
+## House rules: dealer stands on all 17s and peeks for a natural, blackjack
+## pays 3:2, double on any first two cards including after a split, split to
+## at most four hands, split aces draw one card each, insurance pays 2:1.
+## Cards come from a persistent 1-8 deck shoe that reshuffles at 75%
+## penetration.
 
 const CHIP_VALUES := [5, 25, 100, 500]
 const CARD_SIZE := Vector2(96, 134)
@@ -19,6 +21,8 @@ const MAX_DECKS := 8
 const DEFAULT_DECKS := 6
 ## Fraction of the shoe still undealt when the dealer reshuffles.
 const RESHUFFLE_AT := 0.25
+## Most hands one round can be split into.
+const MAX_HANDS := 4
 const TRAINER_WIDTH := 348
 
 const COLOR_FELT := Color(0.05, 0.32, 0.15)
@@ -27,18 +31,23 @@ const COLOR_WIN := Color(0.5, 0.92, 0.55)
 const COLOR_LOSE := Color(0.96, 0.5, 0.45)
 const COLOR_MUTED := Color(0.82, 0.88, 0.82)
 
-enum Phase { BETTING, PLAYER_TURN, DEALER_TURN, ROUND_OVER }
+enum Phase { BETTING, INSURANCE, PLAYER_TURN, DEALER_TURN, ROUND_OVER }
 
 var shoe: Array = []
 var shoe_start_size := 0
 var deck_count := DEFAULT_DECKS
 var shoe_note := ""
 
-var player_hand: Array = []
+## One entry per hand in play: {cards, bet, done, split_aces}. A round starts
+## with a single hand and grows as the player splits.
+var hands: Array = []
+var active_hand := 0
 var dealer_hand: Array = []
+var insurance_bet := 0
+
 var bet := 0
-## The stake chosen before any double-down, carried over as the next
-## round's opening bet so doubling doesn't silently escalate it.
+## The stake chosen before any double or split, carried over as the next
+## round's opening bet so those bets don't silently escalate it.
 var base_bet := 0
 var phase: int = Phase.BETTING
 var hole_hidden := true
@@ -56,9 +65,8 @@ var balance_label: Label
 var bet_label: Label
 var message_label: Label
 var dealer_score_label: Label
-var player_score_label: Label
 var dealer_cards_box: HBoxContainer
-var player_cards_box: HBoxContainer
+var player_area: HBoxContainer
 var chip_holder: Control
 var back_button: Button
 var clear_button: Button
@@ -66,6 +74,9 @@ var deal_button: Button
 var hit_button: Button
 var stand_button: Button
 var double_button: Button
+var split_button: Button
+var insurance_yes_button: Button
+var insurance_no_button: Button
 var new_round_button: Button
 
 var deck_buttons: Array[Button] = []
@@ -92,6 +103,7 @@ func _ready() -> void:
 	_on_balance_changed(Bank.balance)
 	_update_bet_label()
 	_set_message("Place your bet.", Color.WHITE)
+	_refresh_table()
 	_update_controls()
 
 
@@ -149,7 +161,7 @@ func _build_ui() -> void:
 
 func _build_table_column() -> Control:
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 6)
+	column.add_theme_constant_override("separation", 4)
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	dealer_score_label = Label.new()
@@ -158,22 +170,27 @@ func _build_table_column() -> Control:
 	dealer_score_label.add_theme_color_override("font_color", COLOR_MUTED)
 	column.add_child(dealer_score_label)
 
-	dealer_cards_box = _add_card_row(column)
+	var dealer_center := CenterContainer.new()
+	dealer_center.custom_minimum_size = Vector2(0, CARD_SIZE.y + 4)
+	column.add_child(dealer_center)
+	dealer_cards_box = HBoxContainer.new()
+	dealer_cards_box.add_theme_constant_override("separation", 10)
+	dealer_center.add_child(dealer_cards_box)
 
 	message_label = Label.new()
 	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	message_label.custom_minimum_size = Vector2(0, 44)
-	message_label.add_theme_font_size_override("font_size", 24)
+	message_label.custom_minimum_size = Vector2(0, 46)
+	message_label.add_theme_font_size_override("font_size", 22)
 	column.add_child(message_label)
 
-	player_cards_box = _add_card_row(column)
-
-	player_score_label = Label.new()
-	player_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	player_score_label.add_theme_font_size_override("font_size", 20)
-	player_score_label.add_theme_color_override("font_color", COLOR_MUTED)
-	column.add_child(player_score_label)
+	# Player hands, rebuilt each refresh so splits can add columns.
+	var player_center := CenterContainer.new()
+	player_center.custom_minimum_size = Vector2(0, CARD_SIZE.y + 42)
+	column.add_child(player_center)
+	player_area = HBoxContainer.new()
+	player_area.add_theme_constant_override("separation", 10)
+	player_center.add_child(player_area)
 
 	var stretch := Control.new()
 	stretch.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -216,13 +233,18 @@ func _build_table_column() -> Control:
 	column.add_child(action_center)
 
 	var action_row := HBoxContainer.new()
-	action_row.add_theme_constant_override("separation", 12)
+	action_row.add_theme_constant_override("separation", 10)
 	action_center.add_child(action_row)
 
 	deal_button = _make_action_button(action_row, "Deal", Color(0.72, 0.55, 0.1), _on_deal_pressed)
 	hit_button = _make_action_button(action_row, "Hit", Color(0.15, 0.45, 0.25), _on_hit_pressed)
 	stand_button = _make_action_button(action_row, "Stand", Color(0.6, 0.16, 0.16), _on_stand_pressed)
 	double_button = _make_action_button(action_row, "Double", Color(0.2, 0.3, 0.55), _on_double_pressed)
+	split_button = _make_action_button(action_row, "Split", Color(0.42, 0.24, 0.52), _on_split_pressed)
+	insurance_yes_button = _make_action_button(
+		action_row, "Insurance", Color(0.2, 0.3, 0.55), _on_insurance_pressed.bind(true))
+	insurance_no_button = _make_action_button(
+		action_row, "No Insurance", Color(0.35, 0.3, 0.25), _on_insurance_pressed.bind(false))
 	new_round_button = _make_action_button(action_row, "New Round", Color(0.72, 0.55, 0.1), _on_new_round_pressed)
 
 	return column
@@ -242,9 +264,17 @@ func _build_trainer_panel() -> Control:
 	style.content_margin_bottom = 12
 	panel.add_theme_stylebox_override("panel", style)
 
+	# Scrolled so a long explanation can never push the table's own controls
+	# off the bottom of the screen.
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(scroll)
+
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)
-	panel.add_child(column)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
 
 	# --- Shoe ---
 	_add_section_header(column, "SHOE")
@@ -369,22 +399,12 @@ func _make_advice_label(parent: Control) -> Label:
 	return label
 
 
-func _add_card_row(parent: Control) -> HBoxContainer:
-	var center := CenterContainer.new()
-	center.custom_minimum_size = Vector2(0, CARD_SIZE.y + 6)
-	parent.add_child(center)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	center.add_child(row)
-	return row
-
-
 func _make_action_button(parent: Control, text: String, bg: Color, handler: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(126, 50)
+	button.custom_minimum_size = Vector2(118, 50)
 	button.focus_mode = Control.FOCUS_NONE
-	_style_button(button, bg, 22, 16, 10)
+	_style_button(button, bg, 21, 12, 10)
 	button.pressed.connect(handler)
 	parent.add_child(button)
 	return button
@@ -454,7 +474,7 @@ func _reshuffle_if_spent() -> void:
 
 func _draw_card(count_it: bool = true) -> Dictionary:
 	if shoe.is_empty():
-		# Only reachable if a single hand outruns the whole remaining shoe.
+		# Only reachable if a single round outruns the whole remaining shoe.
 		_reshuffle_shoe()
 		shoe_note = "Shoe ran out mid-hand — reshuffled, count reset."
 	var card: Dictionary = shoe.pop_back()
@@ -482,6 +502,10 @@ func _true_count() -> float:
 
 # --- Cards -------------------------------------------------------------------
 
+func _new_hand(stake: int) -> Dictionary:
+	return {"cards": [], "bet": stake, "done": false, "split_aces": false}
+
+
 func _hand_value(hand: Array) -> int:
 	return int(BlackjackStrategy.evaluate(hand).total)
 
@@ -490,23 +514,33 @@ func _is_blackjack(hand: Array) -> bool:
 	return hand.size() == 2 and _hand_value(hand) == 21
 
 
-func _make_card_node(card: Dictionary, face_down: bool) -> Control:
+## Cards shrink as hands are split so four hands still fit the table.
+func _card_size() -> Vector2:
+	match hands.size():
+		0, 1: return CARD_SIZE
+		2: return Vector2(76, 106)
+		3: return Vector2(62, 87)
+	return Vector2(52, 73)
+
+
+func _make_card_node(card: Dictionary, face_down: bool, size: Vector2) -> Control:
 	var panel := Panel.new()
-	panel.custom_minimum_size = CARD_SIZE
+	panel.custom_minimum_size = size
+	var scale := size.y / CARD_SIZE.y
 	var sb := StyleBoxFlat.new()
-	sb.set_corner_radius_all(10)
+	sb.set_corner_radius_all(int(10 * scale))
 
 	if face_down:
 		sb.bg_color = Color(0.13, 0.2, 0.45)
 		sb.border_color = Color(0.72, 0.76, 0.94)
-		sb.set_border_width_all(4)
+		sb.set_border_width_all(maxi(2, int(4 * scale)))
 		panel.add_theme_stylebox_override("panel", sb)
 		var back := Label.new()
 		back.text = "❖"
 		back.set_anchors_preset(Control.PRESET_FULL_RECT)
 		back.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		back.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		back.add_theme_font_size_override("font_size", 40)
+		back.add_theme_font_size_override("font_size", int(40 * scale))
 		back.add_theme_color_override("font_color", Color(0.72, 0.76, 0.94))
 		panel.add_child(back)
 		return panel
@@ -520,8 +554,8 @@ func _make_card_node(card: Dictionary, face_down: bool) -> Control:
 
 	var corner := Label.new()
 	corner.text = "%s\n%s" % [card.rank, card.suit]
-	corner.position = Vector2(8, 4)
-	corner.add_theme_font_size_override("font_size", 20)
+	corner.position = Vector2(int(8 * scale), int(4 * scale))
+	corner.add_theme_font_size_override("font_size", maxi(11, int(20 * scale)))
 	corner.add_theme_color_override("font_color", color)
 	panel.add_child(corner)
 
@@ -530,15 +564,15 @@ func _make_card_node(card: Dictionary, face_down: bool) -> Control:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	center.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	center.add_theme_font_size_override("font_size", 46)
+	center.add_theme_font_size_override("font_size", int(46 * scale))
 	center.add_theme_color_override("font_color", color)
 	panel.add_child(center)
 	return panel
 
 
 func _refresh_table() -> void:
-	_fill_cards(dealer_cards_box, dealer_hand, hole_hidden)
-	_fill_cards(player_cards_box, player_hand, false)
+	_fill_dealer_cards()
+	_fill_player_hands()
 
 	if dealer_hand.is_empty():
 		dealer_score_label.text = "Dealer"
@@ -547,21 +581,69 @@ func _refresh_table() -> void:
 	else:
 		dealer_score_label.text = "Dealer — %d" % _hand_value(dealer_hand)
 
-	if player_hand.is_empty():
-		player_score_label.text = "Player"
-	else:
-		player_score_label.text = "Player — %d" % _hand_value(player_hand)
-
 	_update_trainer()
 
 
-func _fill_cards(box: HBoxContainer, hand: Array, hide_hole: bool) -> void:
-	for child in box.get_children():
-		box.remove_child(child)
+func _fill_dealer_cards() -> void:
+	for child in dealer_cards_box.get_children():
+		dealer_cards_box.remove_child(child)
 		child.queue_free()
-	for i in hand.size():
-		var face_down: bool = hide_hole and i == 1
-		box.add_child(_make_card_node(hand[i], face_down))
+	for i in dealer_hand.size():
+		var face_down: bool = hole_hidden and i == 1
+		dealer_cards_box.add_child(_make_card_node(dealer_hand[i], face_down, CARD_SIZE))
+
+
+func _fill_player_hands() -> void:
+	for child in player_area.get_children():
+		player_area.remove_child(child)
+		child.queue_free()
+
+	if hands.is_empty():
+		var idle := Label.new()
+		idle.text = "Player"
+		idle.add_theme_font_size_override("font_size", 20)
+		idle.add_theme_color_override("font_color", COLOR_MUTED)
+		player_area.add_child(idle)
+		return
+
+	var size := _card_size()
+	for i in hands.size():
+		var hand: Dictionary = hands[i]
+		var is_active: bool = i == active_hand and phase == Phase.PLAYER_TURN
+
+		var frame := PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(1, 1, 1, 0.07) if is_active else Color(1, 1, 1, 0.0)
+		style.border_color = COLOR_GOLD if is_active else Color(1, 1, 1, 0.0)
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(8)
+		style.content_margin_left = 6
+		style.content_margin_right = 6
+		style.content_margin_top = 4
+		style.content_margin_bottom = 4
+		frame.add_theme_stylebox_override("panel", style)
+		player_area.add_child(frame)
+
+		var column := VBoxContainer.new()
+		column.add_theme_constant_override("separation", 4)
+		frame.add_child(column)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		column.add_child(row)
+		for card in hand.cards:
+			row.add_child(_make_card_node(card, false, size))
+
+		var label := Label.new()
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 16)
+		label.add_theme_color_override("font_color", COLOR_GOLD if is_active else COLOR_MUTED)
+		var value := _hand_value(hand.cards)
+		var shown := "BUST %d" % value if value > 21 else str(value)
+		if hands.size() > 1:
+			shown = "H%d · %s" % [i + 1, shown]
+		label.text = "%s · $%s" % [shown, Bank.fmt(int(hand.bet))]
+		column.add_child(label)
 
 
 # --- Trainer panel -----------------------------------------------------------
@@ -596,23 +678,35 @@ func _update_strategy_display() -> void:
 	if not show_basic and not show_deviation:
 		return
 
-	if phase != Phase.PLAYER_TURN or player_hand.is_empty() or dealer_hand.is_empty():
+	# Insurance is a count decision, so it gets its own advice.
+	if phase == Phase.INSURANCE:
+		basic_label.text = "DECLINE — Basic strategy never insures; without a count it's a straight loser."
+		var advice := BlackjackStrategy.insurance(_true_count())
+		deviation_label.text = "%s — %s" % [
+			"INSURE" if advice.take else "DECLINE", advice.reason]
+		deviation_label.add_theme_color_override(
+			"font_color", COLOR_GOLD if advice.take else COLOR_MUTED)
+		return
+
+	if phase != Phase.PLAYER_TURN or hands.is_empty() or dealer_hand.is_empty():
 		var idle := "Deal a hand to see the play for it."
 		basic_label.text = idle
 		deviation_label.text = idle
 		deviation_label.add_theme_color_override("font_color", COLOR_MUTED)
 		return
 
+	var cards: Array = hands[active_hand].cards
 	var dealer_up := int(dealer_hand[0].value)
-	var can_double: bool = player_hand.size() == 2 and Bank.balance >= bet
+	var can_double := _can_double()
+	var can_split := _can_split()
 
 	if show_basic:
-		var basic_play := BlackjackStrategy.basic(player_hand, dealer_up, can_double)
+		var basic_play := BlackjackStrategy.basic(cards, dealer_up, can_double, can_split)
 		basic_label.text = "%s — %s" % [String(basic_play.action).to_upper(), basic_play.reason]
 
 	if show_deviation:
 		var count_play := BlackjackStrategy.with_count(
-			player_hand, dealer_up, can_double, _true_count())
+			cards, dealer_up, can_double, can_split, _true_count())
 		deviation_label.text = "%s — %s" % [String(count_play.action).to_upper(), count_play.reason]
 		# Gold whenever the count actually moves the play off basic strategy.
 		deviation_label.add_theme_color_override(
@@ -675,7 +769,7 @@ func _sync_deck_buttons() -> void:
 
 
 func _mid_hand() -> bool:
-	return phase == Phase.PLAYER_TURN or phase == Phase.DEALER_TURN
+	return phase == Phase.PLAYER_TURN or phase == Phase.DEALER_TURN or phase == Phase.INSURANCE
 
 
 # --- Betting -----------------------------------------------------------------
@@ -717,55 +811,118 @@ func _on_deal_pressed() -> void:
 	base_bet = bet
 
 	_reshuffle_if_spent()
-	player_hand.clear()
+	hands = [_new_hand(bet)]
+	active_hand = 0
+	insurance_bet = 0
 	dealer_hand.clear()
 	hole_hidden = true
 	hole_counted = false
-	player_hand.append(_draw_card())
+	hands[0].cards.append(_draw_card())
 	dealer_hand.append(_draw_card())
-	player_hand.append(_draw_card())
+	hands[0].cards.append(_draw_card())
 	# The hole card is dealt face down, so it stays out of the count.
 	dealer_hand.append(_draw_card(false))
 
+	# Insurance is offered before the dealer peeks at the hole card.
+	if int(dealer_hand[0].value) == 11:
+		phase = Phase.INSURANCE
+		_refresh_table()
+		_set_message("Dealer shows an ace — insurance?", COLOR_GOLD)
+		_update_controls()
+		return
+
 	phase = Phase.PLAYER_TURN
 	_refresh_table()
+	_settle_naturals()
+
+
+func _on_insurance_pressed(take: bool) -> void:
+	if phase != Phase.INSURANCE:
+		return
+	if take:
+		var premium := int(hands[0].bet / 2)
+		if premium <= 0 or not Bank.withdraw(premium):
+			_set_message("Not enough chips for insurance — play on or decline.", COLOR_LOSE)
+			return
+		insurance_bet = premium
+	phase = Phase.PLAYER_TURN
+	_refresh_table()
+	_settle_naturals()
+
+
+## Resolves insurance and any natural. If neither side has one, the player
+## goes on to act.
+func _settle_naturals() -> void:
+	var player_natural := _is_blackjack(hands[0].cards)
+	var dealer_natural := _is_blackjack(dealer_hand)
+
+	var insurance_note := ""
+	if insurance_bet > 0:
+		if dealer_natural:
+			# 2:1, plus the premium back.
+			Bank.deposit(insurance_bet * 3)
+			insurance_note = " Insurance paid $%s." % Bank.fmt(insurance_bet * 2)
+		else:
+			insurance_note = " Insurance lost $%s." % Bank.fmt(insurance_bet)
+
+	if not player_natural and not dealer_natural:
+		if insurance_note != "":
+			_set_message("Dealer has no blackjack.%s Hit or stand?" % insurance_note, COLOR_MUTED)
+		else:
+			_set_message("Hit or stand?", Color.WHITE)
+		_update_controls()
+		return
 
 	# The dealer peeks: a natural on either side ends the round before the
 	# player can act, so a dealer natural can never be pushed by a 21 the
 	# player builds from three or more cards.
-	if _is_blackjack(player_hand) or _is_blackjack(dealer_hand):
-		_reveal_hole()
-		phase = Phase.ROUND_OVER
-		_refresh_table()
-		if _is_blackjack(player_hand) and _is_blackjack(dealer_hand):
-			Bank.deposit(bet)
-			_set_message("Both have blackjack — push.", COLOR_GOLD)
-		elif _is_blackjack(player_hand):
-			# 3:2 rounded up, so a $5 blackjack pays $8 rather than $7.
-			var winnings := roundi(bet * 1.5)
-			Bank.deposit(bet + winnings)
-			_set_message("Blackjack! You win $%s." % Bank.fmt(winnings), COLOR_WIN)
-		else:
-			_set_message("Dealer has blackjack — you lose $%s." % Bank.fmt(bet), COLOR_LOSE)
+	_reveal_hole()
+	phase = Phase.ROUND_OVER
+	_refresh_table()
+	var stake: int = int(hands[0].bet)
+	if player_natural and dealer_natural:
+		Bank.deposit(stake)
+		_set_message("Both have blackjack — push.%s" % insurance_note, COLOR_GOLD)
+	elif player_natural:
+		# 3:2 rounded up, so a $5 blackjack pays $8 rather than $7.
+		var winnings := roundi(stake * 1.5)
+		Bank.deposit(stake + winnings)
+		_set_message("Blackjack! You win $%s.%s" % [Bank.fmt(winnings), insurance_note], COLOR_WIN)
 	else:
-		_set_message("Hit or stand?", Color.WHITE)
+		_set_message("Dealer has blackjack — you lose $%s.%s" % [
+			Bank.fmt(stake), insurance_note], COLOR_LOSE)
 	_update_controls()
+
+
+func _can_double() -> bool:
+	if phase != Phase.PLAYER_TURN or hands.is_empty():
+		return false
+	var hand: Dictionary = hands[active_hand]
+	if hand.split_aces or hand.cards.size() != 2:
+		return false
+	return Bank.balance >= int(hand.bet)
+
+
+func _can_split() -> bool:
+	if phase != Phase.PLAYER_TURN or hands.is_empty():
+		return false
+	var hand: Dictionary = hands[active_hand]
+	# Split aces take one card each and are never re-split.
+	if hand.split_aces or hands.size() >= MAX_HANDS:
+		return false
+	if not BlackjackStrategy.is_pair(hand.cards):
+		return false
+	return Bank.balance >= int(hand.bet)
 
 
 func _on_hit_pressed() -> void:
 	if phase != Phase.PLAYER_TURN:
 		return
-	player_hand.append(_draw_card())
+	var hand: Dictionary = hands[active_hand]
+	hand.cards.append(_draw_card())
 	_refresh_table()
-	var value := _hand_value(player_hand)
-	if value > 21:
-		phase = Phase.ROUND_OVER
-		_reveal_hole()
-		_refresh_table()
-		_set_message("Bust with %d — you lose $%s." % [value, Bank.fmt(bet)], COLOR_LOSE)
-		_update_controls()
-	elif value == 21:
-		_on_stand_pressed()
+	if _hand_value(hand.cards) >= 21:
+		_finish_hand()
 	else:
 		_update_controls()
 
@@ -773,10 +930,88 @@ func _on_hit_pressed() -> void:
 func _on_stand_pressed() -> void:
 	if phase != Phase.PLAYER_TURN:
 		return
+	_finish_hand()
+
+
+func _on_double_pressed() -> void:
+	if not _can_double():
+		return
+	var hand: Dictionary = hands[active_hand]
+	if not Bank.withdraw(int(hand.bet)):
+		_set_message("Not enough chips to double.", COLOR_LOSE)
+		return
+	hand.bet = int(hand.bet) * 2
+	hand.cards.append(_draw_card())
+	_refresh_table()
+	_finish_hand()
+
+
+func _on_split_pressed() -> void:
+	if not _can_split():
+		return
+	var hand: Dictionary = hands[active_hand]
+	if not Bank.withdraw(int(hand.bet)):
+		_set_message("Not enough chips to split.", COLOR_LOSE)
+		return
+
+	var moved: Dictionary = hand.cards.pop_back()
+	var splitting_aces: bool = String(hand.cards[0].rank) == "A"
+	var extra := _new_hand(int(hand.bet))
+	extra.cards.append(moved)
+	extra.split_aces = splitting_aces
+	hand.split_aces = splitting_aces
+	hands.insert(active_hand + 1, extra)
+
+	# The hand being played draws its second card straight away; the other
+	# hand is dealt to when play reaches it.
+	hand.cards.append(_draw_card())
+	if splitting_aces or _hand_value(hand.cards) >= 21:
+		_finish_hand()
+		return
+	_refresh_table()
+	_update_controls()
+	_announce_hand()
+
+
+func _finish_hand() -> void:
+	hands[active_hand].done = true
+	_advance_hand()
+
+
+## Moves to the next hand that still needs playing, dealing it a second card
+## on arrival, and starts the dealer once every hand is settled.
+func _advance_hand() -> void:
+	active_hand += 1
+	while active_hand < hands.size():
+		var hand: Dictionary = hands[active_hand]
+		if hand.cards.size() == 1:
+			hand.cards.append(_draw_card())
+		if hand.split_aces or _hand_value(hand.cards) >= 21:
+			hand.done = true
+			active_hand += 1
+			continue
+		_refresh_table()
+		_update_controls()
+		_announce_hand()
+		return
+	_dealer_turn()
+
+
+func _announce_hand() -> void:
+	if hands.size() > 1:
+		_set_message("Playing hand %d of %d." % [active_hand + 1, hands.size()], Color.WHITE)
+	else:
+		_set_message("Hit or stand?", Color.WHITE)
+
+
+func _dealer_turn() -> void:
 	phase = Phase.DEALER_TURN
 	_update_controls()
 	_reveal_hole()
 	_refresh_table()
+	if _all_hands_busted():
+		_resolve_round()
+		return
 	_set_message("Dealer's turn…", Color.WHITE)
 	while _hand_value(dealer_hand) < 17:
 		await get_tree().create_timer(0.55).timeout
@@ -785,41 +1020,73 @@ func _on_stand_pressed() -> void:
 	_resolve_round()
 
 
-func _on_double_pressed() -> void:
-	if phase != Phase.PLAYER_TURN or player_hand.size() != 2:
-		return
-	if not Bank.withdraw(bet):
-		_set_message("Not enough chips to double.", COLOR_LOSE)
-		return
-	bet *= 2
-	_update_bet_label()
-	player_hand.append(_draw_card())
-	_refresh_table()
-	if _hand_value(player_hand) > 21:
-		phase = Phase.ROUND_OVER
-		_reveal_hole()
-		_refresh_table()
-		_set_message("Bust — you lose $%s." % Bank.fmt(bet), COLOR_LOSE)
-		_update_controls()
-	else:
-		_on_stand_pressed()
+func _all_hands_busted() -> bool:
+	for entry in hands:
+		var hand: Dictionary = entry
+		if _hand_value(hand.cards) <= 21:
+			return false
+	return true
 
 
 func _resolve_round() -> void:
 	phase = Phase.ROUND_OVER
-	var player_value := _hand_value(player_hand)
 	var dealer_value := _hand_value(dealer_hand)
-	if dealer_value > 21:
-		Bank.deposit(bet * 2)
-		_set_message("Dealer busts with %d — you win $%s!" % [dealer_value, Bank.fmt(bet)], COLOR_WIN)
-	elif player_value > dealer_value:
-		Bank.deposit(bet * 2)
-		_set_message("%d beats %d — you win $%s!" % [player_value, dealer_value, Bank.fmt(bet)], COLOR_WIN)
-	elif player_value < dealer_value:
-		_set_message("Dealer's %d beats %d — you lose $%s." % [dealer_value, player_value, Bank.fmt(bet)], COLOR_LOSE)
+	var dealer_bust := dealer_value > 21
+	var staked := 0
+	var returned := 0
+	var outcomes: Array[String] = []
+
+	for entry in hands:
+		var hand: Dictionary = entry
+		var stake: int = int(hand.bet)
+		staked += stake
+		var value := _hand_value(hand.cards)
+		if value > 21:
+			outcomes.append("bust")
+		elif dealer_bust or value > dealer_value:
+			returned += stake * 2
+			outcomes.append("win")
+		elif value < dealer_value:
+			outcomes.append("lose")
+		else:
+			returned += stake
+			outcomes.append("push")
+
+	if returned > 0:
+		Bank.deposit(returned)
+
+	var net := returned - staked
+	if hands.size() == 1:
+		var value := _hand_value(hands[0].cards)
+		match outcomes[0]:
+			"bust":
+				_set_message("Bust with %d — you lose $%s." % [value, Bank.fmt(staked)], COLOR_LOSE)
+			"win":
+				if dealer_bust:
+					_set_message("Dealer busts with %d — you win $%s!" % [
+						dealer_value, Bank.fmt(net)], COLOR_WIN)
+				else:
+					_set_message("%d beats %d — you win $%s!" % [
+						value, dealer_value, Bank.fmt(net)], COLOR_WIN)
+			"lose":
+				_set_message("Dealer's %d beats %d — you lose $%s." % [
+					dealer_value, value, Bank.fmt(staked)], COLOR_LOSE)
+			_:
+				_set_message("Push at %d — bet returned." % value, COLOR_GOLD)
 	else:
-		Bank.deposit(bet)
-		_set_message("Push at %d — bet returned." % player_value, COLOR_GOLD)
+		var parts: Array[String] = []
+		for i in outcomes.size():
+			parts.append("H%d %s" % [i + 1, outcomes[i]])
+		var dealer_text := "Dealer busts (%d)" % dealer_value if dealer_bust else "Dealer %d" % dealer_value
+		var tail := "you break even"
+		var color := COLOR_GOLD
+		if net > 0:
+			tail = "you win $%s" % Bank.fmt(net)
+			color = COLOR_WIN
+		elif net < 0:
+			tail = "you lose $%s" % Bank.fmt(-net)
+			color = COLOR_LOSE
+		_set_message("%s — %s. Overall %s." % [dealer_text, ", ".join(parts), tail], color)
 	_update_controls()
 
 
@@ -827,7 +1094,9 @@ func _on_new_round_pressed() -> void:
 	if phase != Phase.ROUND_OVER:
 		return
 	phase = Phase.BETTING
-	player_hand.clear()
+	hands.clear()
+	active_hand = 0
+	insurance_bet = 0
 	dealer_hand.clear()
 	hole_hidden = true
 	hole_counted = false
@@ -848,11 +1117,15 @@ func _on_new_round_pressed() -> void:
 func _update_controls() -> void:
 	var betting := phase == Phase.BETTING
 	var playing := phase == Phase.PLAYER_TURN
+	var insuring := phase == Phase.INSURANCE
 	chip_holder.visible = betting
 	deal_button.visible = betting
 	hit_button.visible = playing
 	stand_button.visible = playing
-	double_button.visible = playing and player_hand.size() == 2 and Bank.balance >= bet
+	double_button.visible = playing and _can_double()
+	split_button.visible = playing and _can_split()
+	insurance_yes_button.visible = insuring
+	insurance_no_button.visible = insuring
 	new_round_button.visible = phase == Phase.ROUND_OVER
 	back_button.disabled = phase == Phase.DEALER_TURN
 
@@ -877,7 +1150,11 @@ func _on_balance_changed(new_balance: int) -> void:
 func _on_back_pressed() -> void:
 	if phase == Phase.DEALER_TURN:
 		return
-	if phase == Phase.PLAYER_TURN:
-		# Abandoning a hand mid-round returns the stake.
-		Bank.deposit(bet)
+	if phase == Phase.PLAYER_TURN or phase == Phase.INSURANCE:
+		# Abandoning a round mid-hand returns every stake still on the table.
+		var refund := insurance_bet
+		for entry in hands:
+			var hand: Dictionary = entry
+			refund += int(hand.bet)
+		Bank.deposit(refund)
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
