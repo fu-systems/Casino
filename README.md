@@ -51,9 +51,12 @@ held either way) and insets its UI from notches and camera cutouts via
 
 Two honest caveats, both about density rather than correctness. The roulette
 number cells are ~4.8 mm on a phone — tappable but fiddly; thirty-seven
-cells across a handset is inherently tight. The craps number grid is
-tighter still, at ~3 mm per row. In both cases the real fix is a
-mobile-specific board layout rather than a scaling tweak.
+cells across a handset is inherently tight. The craps felt is tighter still:
+faithful table proportions mean a thin don't pass band and a curved apron,
+which are harder to thumb accurately than rectangles would be. Exact polygon
+hit-testing at least stops neighbouring areas stealing taps, but in both
+cases the real fix is a mobile-specific board layout rather than a scaling
+tweak.
 
 ## Running from source
 
@@ -177,9 +180,27 @@ is in progress.
 
 ### Craps
 
-The full table. Bets are labelled with their **house edge** on the board,
-because craps ranges from 1.41% on the pass line to 16.7% on Any 7 and that
-spread is the single most useful thing to know about it.
+Laid out as a real table: the point boxes across the top with the don't come
+box at their end, the come band beneath, the field, and the pass line
+hooking around the outer corner with don't pass running parallel just inside
+it. Big 6/8 splits a square on the diagonal, and the stickman's proposition
+box sits to the side with dice pips printed on the hardways and the one-roll
+numbers. The white **ON** puck sits on the point; between points the black
+**OFF** puck is parked in the don't come box.
+
+Chips land where chips land on a table — place bets on the bottom line of a
+box, come bets inside it, don't come bets in the strip above the number, and
+odds heeled beside their flat bet.
+
+A real table prints no house edge anywhere, so neither does this one.
+**Show Edges** puts them all back: craps runs from 1.41% on the pass line to
+16.7% on Any 7, and that spread is the single most useful thing to know
+about the game.
+
+Payouts are printed **TO 1**, not the casino's **FOR 1**. They are not the
+same thing — 30 *for* 1 returns 30 including your stake, which is 29:1. This
+game pays 30 *to* 1, so printing the casino's wording would misstate its own
+payout.
 
 House rules, stated on screen because they change what a bet does:
 
@@ -272,7 +293,10 @@ count is shown under the table.
 | `scripts/blackjack_strategy.gd` | Hi-Lo values, basic strategy, and count index plays |
 | `scripts/roulette.gd` + `scenes/roulette.tscn` | Roulette table |
 | `scripts/roulette_wheel.gd` | Custom-drawn spinning wheel |
-| `scripts/craps.gd` + `scenes/craps.tscn` | Craps table, dice, and proposition box |
+| `scripts/craps.gd` + `scenes/craps.tscn` | Craps game logic and rail |
+| `scripts/craps_table.gd` | The felt: every betting area's geometry, and the painting of it |
+| `scripts/craps_die.gd` | Die face drawn from pips, shared by the dice and the prop box |
+| `scripts/poly_button.gd` | Button whose clickable area is a polygon, not its rectangle |
 | `scripts/baccarat.gd` + `scenes/baccarat.tscn` | Baccarat table and drawing tableau |
 | `scripts/casino_ui.gd` | Shared button and panel styling |
 | `scripts/bet_board.gd` | Shared chip-placement board used by roulette, craps and baccarat |
@@ -300,16 +324,23 @@ godot --headless --path . res://tests/run_all.tscn
 | `layout_fits` | Every scene fits the 1280x720 design viewport |
 | `blackjack_rules` | Shoe composition, the Hi-Lo count against the undealt remainder, both strategy charts and their indices, split stakes, split aces, insurance |
 | `roulette_rules` | Wheel order and colours, the board covering 1-36 once, payouts, and every way a repeat-until-win run can stop |
-| `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, and what a seven-out takes |
+| `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, what a seven-out takes, and that every hit-zone on the felt matches the paint |
 | `baccarat_rules` | All 80 cells of the banker tableau, naturals, pair detection, and commission arithmetic |
 
-Two of those are worth calling out. The craps suite rolls the dice 180,000
+Three of those are worth calling out. The craps suite rolls the dice 180,000
 times and checks the histogram against the real 2d6 distribution, because
 `randi() % 11 + 2` is uniform over 2-12, looks entirely reasonable, and
-would quietly make it a different game. The baccarat suite checks the banker
-tableau exhaustively against an independently restated copy of the published
-table, because the tableau *is* the game and one wrong cell would be
-invisible in play.
+would quietly make it a different game. It also checks all 51 hit-zones on
+the felt: that each bet has an area, no two areas overlap, and a click on
+each chip spot lands on the bet the paint says it should — the felt is one
+painted picture with polygons layered over it, so a wrong polygon still
+screenshots perfectly. That check caught the pass line's own chip spot
+sitting inside its odds zone, which would have put line chips on the odds
+spot and turned taps meant for the line into odds bets.
+
+The baccarat suite checks the banker tableau exhaustively against an
+independently restated copy of the published table, because the tableau *is*
+the game and one wrong cell would be invisible in play.
 
 ## Building locally
 

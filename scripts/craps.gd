@@ -20,6 +20,8 @@ const POINTS := [4, 5, 6, 8, 9, 10]
 const TRUE_ODDS := {4: [2, 1], 5: [3, 2], 6: [6, 5], 8: [6, 5], 9: [3, 2], 10: [2, 1]}
 ## Place bets pay worse than true odds — that is the whole house edge.
 const PLACE_ODDS := {4: [9, 5], 5: [7, 5], 6: [7, 6], 8: [7, 6], 9: [7, 5], 10: [9, 5]}
+## ...and here is exactly how much worse, for the edge toggle.
+const PLACE_EDGE := {4: "6.67%", 5: "4.00%", 6: "1.52%", 8: "1.52%", 9: "4.00%", 10: "6.67%"}
 ## 3-4-5x: the multiple of the flat bet you may take in odds. Every one of
 ## them tops out at a win of six times the flat bet.
 const ODDS_MULTIPLE := {4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3}
@@ -71,8 +73,9 @@ var history: Array = []
 ## Set by tests to force known dice; consumed before the generator.
 var scripted_rolls: Array = []
 
-var die_a: Die
-var die_b: Die
+var felt: CrapsTable
+var die_a: CrapsDie
+var die_b: CrapsDie
 var balance_label: Label
 var total_bet_label: Label
 var message_label: Label
@@ -84,6 +87,10 @@ var back_button: Button
 var roll_button: Button
 var clear_button: Button
 var max_odds_button: Button
+var edges_button: Button
+
+## Built once, then handed to both `BetBoard` and the felt.
+var _meta_cache := {}
 
 
 func _ready() -> void:
@@ -562,30 +569,32 @@ func _resolve_point_roll(total: int, notes: Array) -> String:
 # --- UI ----------------------------------------------------------------------
 
 func _build_ui() -> void:
-	# Every area here carries its name and its price, so chips go in the
-	# corner rather than over the words.
-	board.badge_position = BetBoard.Badge.CORNER
-
 	var bg := ColorRect.new()
 	bg.color = COLOR_FELT
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var margin := SafeArea.create(18)
+	var margin := SafeArea.create(16)
 	add_child(margin)
 
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 8)
+	column.add_theme_constant_override("separation", 6)
 	margin.add_child(column)
 
 	column.add_child(_build_top_bar())
+	column.add_child(_build_messages())
 
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 16)
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(body)
-	body.add_child(_build_side_panel())
-	body.add_child(_build_board())
+	# The felt paints itself and owns every area's geometry; the buttons are
+	# transparent polygons layered over it.
+	felt = CrapsTable.new()
+	felt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	felt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	felt.geometry_changed.connect(_fit_areas)
+	column.add_child(felt)
+	_describe_bets()
+	_build_areas()
+
+	column.add_child(_build_rail())
 
 
 func _build_top_bar() -> Control:
@@ -602,7 +611,7 @@ func _build_top_bar() -> Control:
 	title.text = "CRAPS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_font_size_override("font_size", 28)
 	title.add_theme_color_override("font_color", COLOR_GOLD)
 	top.add_child(title)
 
@@ -613,293 +622,240 @@ func _build_top_bar() -> Control:
 	return top
 
 
-func _build_side_panel() -> Control:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", CasinoUI.panel_style(COLOR_PANEL, COLOR_GOLD, 12, 14))
-	panel.custom_minimum_size = Vector2(300, 0)
+func _build_messages() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
 
-	var side := VBoxContainer.new()
-	side.add_theme_constant_override("separation", 10)
-	panel.add_child(side)
+	message_label = Label.new()
+	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message_label.custom_minimum_size = Vector2(0, 26)
+	message_label.add_theme_font_size_override("font_size", 19)
+	box.add_child(message_label)
+
+	detail_label = Label.new()
+	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail_label.custom_minimum_size = Vector2(0, 28)
+	detail_label.add_theme_font_size_override("font_size", 13)
+	detail_label.add_theme_color_override("font_color", COLOR_MUTED)
+	box.add_child(detail_label)
+	return box
+
+
+## What each area prints. The price comes from the same constant that pays
+## it, so the felt can't drift from the payout.
+func _describe_bets() -> void:
+	felt.set_text("pass", "PASS LINE", "1 TO 1", "edge 1.41%")
+	felt.set_text("dont_pass", "DON'T PASS", "1 TO 1", "edge 1.36%")
+	felt.set_text("pass_odds", "ODDS", "true price", "no edge")
+	felt.set_text("dont_pass_odds", "LAY ODDS", "true price", "no edge")
+	felt.set_text("come", "COME", "1 TO 1", "edge 1.41%")
+	felt.set_text("dont_come", "DON'T COME", "1 TO 1", "edge 1.36%")
+	felt.set_text("field", "FIELD", "1 TO 1", "edge 2.78%")
+	felt.set_text("big_6", "BIG 6", "1 TO 1", "9.09%")
+	felt.set_text("big_8", "BIG 8", "1 TO 1", "9.09%")
+
+	for number in POINTS:
+		var o: Array = PLACE_ODDS[number]
+		felt.set_text("place_%d" % number, "PLACE %d" % number,
+			"%d TO %d" % [int(o[0]), int(o[1])], String(PLACE_EDGE[number]))
+		var t: Array = TRUE_ODDS[number]
+		var price := "%d TO %d" % [int(t[0]), int(t[1])]
+		felt.set_text("come_%d" % number, "COME %d" % number, "1 TO 1", "edge 1.41%")
+		felt.set_text("dont_come_%d" % number, "DON'T COME %d" % number, "1 TO 1", "edge 1.36%")
+		felt.set_text("come_odds_%d" % number, "ODDS", price, "no edge")
+		felt.set_text("dont_come_odds_%d" % number, "LAY", price, "no edge")
+
+	for number in HARD_PAYS:
+		felt.set_text("hard_%d" % number, "HARD %d" % number,
+			"%d TO 1" % int(HARD_PAYS[number]),
+			"11.1%" if number in [4, 10] else "9.09%")
+
+	for key in PROPS:
+		var prop: Dictionary = PROPS[key]
+		felt.set_text(key, String(prop.label), "%d TO 1" % int(prop.pays), String(prop.edge))
+	felt.set_text("horn", "HORN", "quartered", "12.5%")
+	felt.set_text("c_and_e", "C & E", "halved", "11.1%")
+
+
+## One transparent polygon button per area, stacked over the felt. Each
+## covers the whole felt and hit-tests its own polygon, so a click lands on
+## the area whose shape actually contains it rather than whichever bounding
+## box happens to be on top.
+func _build_areas() -> void:
+	for key in _bet_meta():
+		var button := PolyButton.new()
+		button.set_anchors_preset(Control.PRESET_FULL_RECT)
+		# Come points and odds spots never dim. Neither is a bet turned off:
+		# one is a place chips have not reached yet, the other a spot with
+		# nothing behind it. Greying either reads as a rendering fault, and
+		# a dark patch in the middle of the pass line especially so — the
+		# refusal message explains why a tap did nothing.
+		var kind := String(_bet_meta()[key].get("kind", ""))
+		button.dim_when_disabled = not (kind in ["point", "odds"])
+		button.pressed.connect(_on_bet_pressed.bind(key))
+		felt.add_child(button)
+		board.add(key, button, _bet_meta()[key])
+
+
+## The kinds the game reasons about, keyed the same as the felt's areas.
+func _bet_meta() -> Dictionary:
+	if not _meta_cache.is_empty():
+		return _meta_cache
+	_meta_cache = {
+		"pass": {"kind": "line"},
+		"dont_pass": {"kind": "line"},
+		"pass_odds": {"kind": "odds", "flat": "pass", "lay": false},
+		"dont_pass_odds": {"kind": "odds", "flat": "dont_pass", "lay": true},
+		"come": {"kind": "come"},
+		"dont_come": {"kind": "come"},
+		"field": {"kind": "one_roll"},
+		"big_6": {"kind": "contract"},
+		"big_8": {"kind": "contract"},
+		"horn": {"kind": "one_roll"},
+		"c_and_e": {"kind": "one_roll"},
+	}
+	for number in POINTS:
+		_meta_cache["place_%d" % number] = {"kind": "place", "number": number}
+		_meta_cache["come_%d" % number] = {"kind": "point", "number": number}
+		_meta_cache["dont_come_%d" % number] = {"kind": "point", "number": number}
+		_meta_cache["come_odds_%d" % number] = {
+			"kind": "odds", "number": number, "flat": "come_%d" % number, "lay": false}
+		_meta_cache["dont_come_odds_%d" % number] = {
+			"kind": "odds", "number": number, "flat": "dont_come_%d" % number, "lay": true}
+	for number in HARD_PAYS:
+		_meta_cache["hard_%d" % number] = {"kind": "contract"}
+	for key in PROPS:
+		_meta_cache[key] = {"kind": "one_roll"}
+	return _meta_cache
+
+
+## Copies the felt's freshly computed geometry onto the buttons: the hit
+## polygon, and the chip spot the badge sits on.
+func _fit_areas() -> void:
+	for key in board.bets:
+		if not felt.areas.has(key):
+			continue
+		var area: Dictionary = felt.areas[key]
+		var button: PolyButton = board.bets[key].button
+		button.polygon = area.poly
+		board.bets[key].meta["badge_at"] = area.chip
+	board.refresh_all_badges()
+
+
+func _build_rail() -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", CasinoUI.panel_style(COLOR_PANEL, COLOR_GOLD, 10, 8))
+
+	var rail := VBoxContainer.new()
+	rail.add_theme_constant_override("separation", 5)
+	panel.add_child(rail)
+
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	top.alignment = BoxContainer.ALIGNMENT_CENTER
+	rail.add_child(top)
+
+	die_a = CrapsDie.new()
+	die_a.custom_minimum_size = Vector2(46, 46)
+	top.add_child(die_a)
+	die_b = CrapsDie.new()
+	die_b.custom_minimum_size = Vector2(46, 46)
+	top.add_child(die_b)
 
 	point_label = Label.new()
-	point_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	point_label.add_theme_font_size_override("font_size", 24)
+	point_label.custom_minimum_size = Vector2(150, 0)
+	point_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	point_label.add_theme_font_size_override("font_size", 19)
 	point_label.add_theme_color_override("font_color", COLOR_GOLD)
-	side.add_child(point_label)
+	top.add_child(point_label)
 
-	var dice_row := HBoxContainer.new()
-	dice_row.add_theme_constant_override("separation", 16)
-	dice_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	side.add_child(dice_row)
-	die_a = Die.new()
-	die_a.custom_minimum_size = Vector2(76, 76)
-	dice_row.add_child(die_a)
-	die_b = Die.new()
-	die_b.custom_minimum_size = Vector2(76, 76)
-	dice_row.add_child(die_b)
-
-	roll_label = Label.new()
-	roll_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	roll_label.add_theme_font_size_override("font_size", 18)
-	roll_label.add_theme_color_override("font_color", Color.WHITE)
-	side.add_child(roll_label)
-
-	roll_button = Button.new()
-	roll_button.text = "ROLL"
-	roll_button.custom_minimum_size = Vector2(0, 58)
-	roll_button.focus_mode = Control.FOCUS_NONE
-	CasinoUI.style_button(roll_button, Color(0.72, 0.55, 0.1), 26, 14, 10)
-	roll_button.pressed.connect(_on_roll_pressed)
-	side.add_child(roll_button)
-
-	var chip_grid := GridContainer.new()
-	chip_grid.columns = 4
-	chip_grid.add_theme_constant_override("h_separation", 6)
-	side.add_child(chip_grid)
 	var group := ButtonGroup.new()
 	for value in CHIP_VALUES:
 		var chip := Button.new()
 		chip.text = "$%d" % value
 		chip.toggle_mode = true
 		chip.button_group = group
-		chip.custom_minimum_size = Vector2(61, 42)
+		chip.custom_minimum_size = Vector2(66, 40)
 		chip.focus_mode = Control.FOCUS_NONE
-		CasinoUI.style_button(chip, Color(0.1, 0.14, 0.11), 16, 4, 4, 21)
+		CasinoUI.style_button(chip, Color(0.1, 0.14, 0.11), 16, 4, 4, 20)
 		var chosen := StyleBoxFlat.new()
 		chosen.bg_color = COLOR_GOLD
-		chosen.set_corner_radius_all(21)
+		chosen.set_corner_radius_all(20)
 		chip.add_theme_stylebox_override("pressed", chosen)
 		chip.add_theme_color_override("font_pressed_color", Color(0.15, 0.1, 0.0))
 		chip.pressed.connect(func() -> void: selected_chip = value)
 		if value == selected_chip:
 			chip.button_pressed = true
-		chip_grid.add_child(chip)
+		top.add_child(chip)
+
+	roll_button = _rail_button(top, "ROLL", Color(0.72, 0.55, 0.1), _on_roll_pressed, 132)
+	roll_button.add_theme_font_size_override("font_size", 22)
+	max_odds_button = _rail_button(top, "Max Odds", COLOR_ODDS.lightened(0.12), _on_max_odds_pressed, 100)
+	clear_button = _rail_button(top, "Clear", Color(0.32, 0.28, 0.23), _on_clear_pressed, 82)
+	edges_button = _rail_button(top, "Show Edges", Color(0.24, 0.2, 0.34), _on_edges_pressed, 116)
+
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 12)
+	bottom.alignment = BoxContainer.ALIGNMENT_CENTER
+	rail.add_child(bottom)
 
 	total_bet_label = Label.new()
-	total_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	total_bet_label.add_theme_font_size_override("font_size", 18)
+	total_bet_label.add_theme_font_size_override("font_size", 15)
 	total_bet_label.add_theme_color_override("font_color", COLOR_GOLD)
-	side.add_child(total_bet_label)
+	bottom.add_child(total_bet_label)
 
-	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 6)
-	side.add_child(actions)
-	max_odds_button = Button.new()
-	max_odds_button.text = "Max Odds"
-	max_odds_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	max_odds_button.focus_mode = Control.FOCUS_NONE
-	CasinoUI.style_button(max_odds_button, COLOR_ODDS.lightened(0.1), 16, 8, 8)
-	max_odds_button.pressed.connect(_on_max_odds_pressed)
-	actions.add_child(max_odds_button)
-	clear_button = Button.new()
-	clear_button.text = "Clear Bets"
-	clear_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	clear_button.focus_mode = Control.FOCUS_NONE
-	CasinoUI.style_button(clear_button, Color(0.32, 0.28, 0.23), 16, 8, 8)
-	clear_button.pressed.connect(_on_clear_pressed)
-	actions.add_child(clear_button)
-
-	var history_title := Label.new()
-	history_title.text = "Recent rolls"
-	history_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	history_title.add_theme_font_size_override("font_size", 13)
-	history_title.add_theme_color_override("font_color", COLOR_MUTED)
-	side.add_child(history_title)
+	roll_label = Label.new()
+	roll_label.add_theme_font_size_override("font_size", 13)
+	roll_label.add_theme_color_override("font_color", COLOR_MUTED)
+	bottom.add_child(roll_label)
 
 	history_box = HBoxContainer.new()
 	history_box.add_theme_constant_override("separation", 4)
-	history_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	side.add_child(history_box)
-
-	var filler := Control.new()
-	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	side.add_child(filler)
+	bottom.add_child(history_box)
 
 	var rules := Label.new()
-	rules.text = "Place bets and odds are off on the come-out. Odds capped 3-4-5x. Place and Big 6/8 stay working after a win."
-	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules.text = "Place bets and odds are off on the come-out · odds capped 3-4-5x · place and Big 6/8 stay working after a win"
 	rules.add_theme_font_size_override("font_size", 12)
 	rules.add_theme_color_override("font_color", COLOR_MUTED)
-	side.add_child(rules)
+	bottom.add_child(rules)
 	return panel
 
 
-func _build_board() -> Control:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", CasinoUI.panel_style(COLOR_PANEL, COLOR_GOLD, 12, 12))
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var board_column := VBoxContainer.new()
-	board_column.add_theme_constant_override("separation", 6)
-	panel.add_child(board_column)
-
-	message_label = Label.new()
-	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	message_label.custom_minimum_size = Vector2(0, 28)
-	message_label.add_theme_font_size_override("font_size", 20)
-	board_column.add_child(message_label)
-
-	detail_label = Label.new()
-	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_label.custom_minimum_size = Vector2(0, 30)
-	detail_label.add_theme_font_size_override("font_size", 13)
-	detail_label.add_theme_color_override("font_color", COLOR_MUTED)
-	board_column.add_child(detail_label)
-
-	# Line bets and the odds behind them.
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 6)
-	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_column.add_child(line)
-	_add_bet(line, "pass", "PASS LINE\n1:1 · edge 1.41%", COLOR_PASS, Vector2(0, 50), 14,
-		{"kind": "line"})
-	_add_bet(line, "pass_odds", "ODDS\ntrue price · no edge", COLOR_ODDS, Vector2(0, 50), 13,
-		{"kind": "odds", "flat": "pass", "lay": false})
-	_add_bet(line, "dont_pass", "DON'T PASS\nbar 12 · 1:1 · edge 1.36%", COLOR_DONT, Vector2(0, 50), 13,
-		{"kind": "line"})
-	_add_bet(line, "dont_pass_odds", "LAY ODDS\ntrue price · no edge", COLOR_ODDS, Vector2(0, 50), 13,
-		{"kind": "odds", "flat": "dont_pass", "lay": true})
-
-	var come := HBoxContainer.new()
-	come.add_theme_constant_override("separation", 6)
-	come.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_column.add_child(come)
-	_add_bet(come, "come", "COME  1:1 · edge 1.41%", COLOR_PASS.darkened(0.15), Vector2(0, 40), 14,
-		{"kind": "come"})
-	_add_bet(come, "dont_come", "DON'T COME  bar 12 · 1:1 · edge 1.36%", COLOR_DONT.darkened(0.15),
-		Vector2(0, 40), 14, {"kind": "come"})
-
-	board_column.add_child(_build_numbers())
-
-	_add_bet(board_column, "field",
-		"FIELD  2 3 4 9 10 11 12   ·   pays 1:1, the 2 pays 2:1 and the 12 pays 3:1   ·   edge 2.78%",
-		COLOR_FIELD, Vector2(0, 42), 14, {"kind": "one_roll"})
-
-	var hard_row := HBoxContainer.new()
-	hard_row.add_theme_constant_override("separation", 6)
-	hard_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_column.add_child(hard_row)
-	_add_bet(hard_row, "big_6", "BIG 6\n1:1 · 9.09%", COLOR_PLACE.lightened(0.1), Vector2(0, 44), 13,
-		{"kind": "contract"})
-	_add_bet(hard_row, "big_8", "BIG 8\n1:1 · 9.09%", COLOR_PLACE.lightened(0.1), Vector2(0, 44), 13,
-		{"kind": "contract"})
-	for number in [4, 6, 8, 10]:
-		var edge := "11.1%" if number in [4, 10] else "9.09%"
-		_add_bet(hard_row, "hard_%d" % number,
-			"HARD %d\n%d:1 · %s" % [number, HARD_PAYS[number], edge],
-			COLOR_HARD, Vector2(0, 44), 13, {"kind": "contract"})
-
-	board_column.add_child(_build_props())
-	return panel
-
-
-## Six number columns, each stacking everything that can ride on that number:
-## the place bet, a come point with its odds, and a don't come point with its
-## lay. Come chips arrive on their own; tapping one takes odds behind it.
-func _build_numbers() -> Control:
-	var grid := GridContainer.new()
-	grid.columns = 7
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 3)
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-
-	grid.add_child(_row_label(""))
-	for number in POINTS:
-		var head := Label.new()
-		head.text = str(number)
-		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		head.custom_minimum_size = Vector2(106, 0)
-		head.add_theme_font_size_override("font_size", 20)
-		head.add_theme_color_override("font_color", COLOR_GOLD)
-		grid.add_child(head)
-
-	var rows := [
-		{"label": "PLACE", "prefix": "place_", "colour": COLOR_PLACE, "kind": "place"},
-		{"label": "COME", "prefix": "come_", "colour": COLOR_PASS.darkened(0.2), "kind": "point"},
-		{"label": "ODDS", "prefix": "come_odds_", "colour": COLOR_ODDS, "kind": "odds"},
-		{"label": "DON'T", "prefix": "dont_come_", "colour": COLOR_DONT.darkened(0.2), "kind": "point"},
-		{"label": "LAY", "prefix": "dont_come_odds_", "colour": COLOR_ODDS, "kind": "odds"},
-	]
-	for row in rows:
-		grid.add_child(_row_label(String(row.label)))
-		for number in POINTS:
-			var key: String = String(row.prefix) + str(number)
-			var text := ""
-			var meta := {"kind": String(row.kind), "number": number}
-			match String(row.kind):
-				"place":
-					var o: Array = PLACE_ODDS[number]
-					text = "%d:%d" % [int(o[0]), int(o[1])]
-				"odds":
-					var lay := String(row.prefix).begins_with("dont")
-					meta["lay"] = lay
-					meta["flat"] = ("dont_come_" if lay else "come_") + str(number)
-			_add_bet(grid, key, text, Color(row.colour), Vector2(106, 30), 12, meta)
-	return grid
-
-
-func _row_label(text: String) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.custom_minimum_size = Vector2(56, 0)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", COLOR_MUTED)
-	return label
-
-
-func _build_props() -> Control:
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 4)
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-
-	for key in PROPS:
-		var prop: Dictionary = PROPS[key]
-		_add_bet(grid, key, "%s\n%d:1 · %s" % [prop.label, int(prop.pays), prop.edge],
-			COLOR_PROP, Vector2(0, 40), 12, {"kind": "one_roll"})
-	_add_bet(grid, "horn", "HORN  2 3 11 12\nquartered · 12.5%", COLOR_PROP.darkened(0.15),
-		Vector2(0, 40), 12, {"kind": "one_roll"})
-	_add_bet(grid, "c_and_e", "C & E  craps or yo\nhalved · 11.1%", COLOR_PROP.darkened(0.15),
-		Vector2(0, 40), 12, {"kind": "one_roll"})
-	return grid
-
-
-func _add_bet(parent: Control, key: String, text: String, colour: Color,
-		size: Vector2, font_size: int, meta: Dictionary) -> void:
+func _rail_button(parent: Control, text: String, colour: Color, handler: Callable,
+		width: int) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = size
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(width, 40)
 	button.focus_mode = Control.FOCUS_NONE
-	button.clip_text = true
-	CasinoUI.style_button(button, colour, font_size, 4, 2, 6)
-	button.pressed.connect(_on_bet_pressed.bind(key))
+	CasinoUI.style_button(button, colour, 16, 8, 6)
+	button.pressed.connect(handler)
 	parent.add_child(button)
-	board.add(key, button, meta)
+	return button
+
+
+func _on_edges_pressed() -> void:
+	felt.edges_shown = not felt.edges_shown
+	edges_button.text = "Hide Edges" if felt.edges_shown else "Show Edges"
 
 
 func _add_history(total: int) -> void:
 	history.push_front(total)
-	if history.size() > 12:
-		history.resize(12)
+	if history.size() > 10:
+		history.resize(10)
 	for child in history_box.get_children():
 		history_box.remove_child(child)
 		child.queue_free()
 	for entry in history:
 		var dot := Label.new()
 		dot.text = str(entry)
-		dot.custom_minimum_size = Vector2(21, 21)
+		dot.custom_minimum_size = Vector2(20, 20)
 		dot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		dot.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = COLOR_DONT if entry == 7 else Color(0.1, 0.28, 0.16)
-		sb.set_corner_radius_all(11)
+		sb.set_corner_radius_all(10)
 		dot.add_theme_stylebox_override("normal", sb)
 		dot.add_theme_color_override("font_color", Color.WHITE)
 		dot.add_theme_font_size_override("font_size", 12)
@@ -907,6 +863,7 @@ func _add_history(total: int) -> void:
 
 
 func _refresh() -> void:
+	felt.point = point
 	point_label.text = "Come-out roll" if point == 0 else "Point:  %d" % point
 	roll_label.text = "Rolling…" if rolling else "Last roll: %d" % (die_a.value + die_b.value)
 	if history.is_empty() and not rolling:
@@ -938,36 +895,3 @@ func _set_message(text: String, colour: Color) -> void:
 
 func _on_balance_changed(new_balance: int) -> void:
 	balance_label.text = "Balance: $%s" % Bank.fmt(new_balance)
-
-
-## A die face drawn from pips, so the dice read at a glance rather than
-## being two numbers in boxes.
-class Die:
-	extends Control
-
-	const PIPS := {
-		1: [Vector2(0.5, 0.5)],
-		2: [Vector2(0.29, 0.29), Vector2(0.71, 0.71)],
-		3: [Vector2(0.27, 0.27), Vector2(0.5, 0.5), Vector2(0.73, 0.73)],
-		4: [Vector2(0.29, 0.29), Vector2(0.71, 0.29), Vector2(0.29, 0.71), Vector2(0.71, 0.71)],
-		5: [Vector2(0.27, 0.27), Vector2(0.73, 0.27), Vector2(0.5, 0.5),
-			Vector2(0.27, 0.73), Vector2(0.73, 0.73)],
-		6: [Vector2(0.29, 0.24), Vector2(0.71, 0.24), Vector2(0.29, 0.5),
-			Vector2(0.71, 0.5), Vector2(0.29, 0.76), Vector2(0.71, 0.76)],
-	}
-
-	var value := 1:
-		set(v):
-			value = clampi(v, 1, 6)
-			queue_redraw()
-
-	func _draw() -> void:
-		var box := StyleBoxFlat.new()
-		box.bg_color = Color(0.97, 0.96, 0.93)
-		box.set_corner_radius_all(int(size.x * 0.16))
-		box.border_color = Color(0.52, 0.52, 0.49)
-		box.set_border_width_all(2)
-		draw_style_box(box, Rect2(Vector2.ZERO, size))
-		for pip in PIPS[value]:
-			draw_circle(Vector2(pip.x * size.x, pip.y * size.y), size.x * 0.085,
-				Color(0.12, 0.1, 0.1))
