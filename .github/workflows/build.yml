@@ -45,6 +45,18 @@ jobs:
       - name: Fail on runtime errors
         run: .github/scripts/assert-no-godot-errors.sh /tmp/run.log "booting the game"
 
+      - name: Run the rule suites
+        run: |
+          set -uo pipefail
+          # The suites drive the real scenes, so they catch rule regressions
+          # that a parse check never would.
+          godot --headless --path . res://tests/run_all.tscn 2>&1 | tee /tmp/tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Rule suites failed"
+            exit "$status"
+          fi
+
   export:
     name: Export ${{ matrix.name }}
     runs-on: ubuntu-latest

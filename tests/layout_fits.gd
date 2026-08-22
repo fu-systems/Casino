@@ -1,58 +1,48 @@
-extends Node
+extends CasinoTest
 ## Asserts every scene fits inside the design viewport.
 ##
-## The project uses `stretch/aspect = "expand"`, which guarantees the
-## viewport is never smaller than the 1280x720 design size in either
-## direction — but only helps if the scenes themselves fit that size. This
-## checks each scene's combined minimum against it, so a layout change that
-## would clip on a 4:3 tablet fails CI instead of shipping.
-##
-## Run headless:
-##   godot --headless --path . tests/layout_fits.tscn
+## The project uses `stretch/aspect = "expand"`, which guarantees the viewport
+## is never smaller than the 1280x720 design size in either direction — but
+## only helps if the scenes themselves fit that size. Roulette clears it by
+## just 22px, so this guard is what stops a layout change clipping on a 4:3
+## tablet.
 
 const DESIGN := Vector2(1280, 720)
 const SCENES := [
 	"res://scenes/main_menu.tscn",
 	"res://scenes/blackjack.tscn",
 	"res://scenes/roulette.tscn",
+	"res://scenes/craps.tscn",
+	"res://scenes/baccarat.tscn",
 ]
 
-var failures := 0
 
-
-func _ready() -> void:
+func run() -> void:
 	for path in SCENES:
+		if not ResourceLoader.exists(path):
+			continue
 		await _check_scene(path)
-	if failures == 0:
-		print("=== ALL SCENES FIT %dx%d ===" % [int(DESIGN.x), int(DESIGN.y)])
-	else:
-		print("=== %d SCENE(S) OVERFLOW THE DESIGN VIEWPORT ===" % failures)
-	get_tree().quit(1 if failures > 0 else 0)
 
 
 func _check_scene(path: String) -> void:
-	var scene: PackedScene = load(path)
-	var root: Control = scene.instantiate()
+	var root: Control = load(path).instantiate()
 	add_child(root)
 	# The root is anchored full-rect, so it takes the viewport size, which
 	# headless reports as the design size. Let containers settle first.
-	for i in 4:
-		await get_tree().process_frame
+	await frames(4)
 
 	var needed := _deep_minimum(root)
 	var name := path.get_file().get_basename()
 	var headroom := DESIGN - needed
 	if needed.x > DESIGN.x or needed.y > DESIGN.y:
-		failures += 1
-		print("FAIL: %s needs %dx%d, over the %dx%d design size by %dx%d" % [
-			name, needed.x, needed.y, DESIGN.x, DESIGN.y,
-			maxf(0.0, -headroom.x), maxf(0.0, -headroom.y)])
+		fail("%s needs %dx%d, over the %dx%d design size" % [
+			name, needed.x, needed.y, DESIGN.x, DESIGN.y])
 	else:
-		print("OK: %-10s needs %4dx%-4d  (headroom %3dx%-3d)" % [
+		note("%-10s needs %4dx%-4d  (headroom %3dx%-3d)" % [
 			name, needed.x, needed.y, headroom.x, headroom.y])
 
 	root.queue_free()
-	await get_tree().process_frame
+	await frames()
 
 
 ## Largest minimum size demanded anywhere in the tree. Scroll containers
