@@ -1,6 +1,10 @@
 # Godot 4 cache/import data
 .godot/
 
+# Local build output (CI publishes these as artifacts instead)
+build/
+dist/
+
 # Exports
 export.cfg
 export_credentials.cfg

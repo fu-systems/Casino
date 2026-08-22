@@ -1,0 +1,55 @@
+name: Set up Godot
+description: >
+  Installs the Godot editor binary and the Linux/Windows export templates,
+  caching both between runs, and puts `godot` on PATH.
+
+inputs:
+  version:
+    description: Godot stable version to install, e.g. "4.5.1".
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore Godot cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/godot-bin
+          ~/.local/share/godot/export_templates
+        key: godot-${{ inputs.version }}
+
+    - name: Download Godot ${{ inputs.version }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GODOT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+        mkdir -p "$HOME/godot-bin" "$HOME/.local/share/godot/export_templates"
+
+        echo "Downloading editor..."
+        curl -fsSL --retry 3 --retry-delay 5 -o /tmp/godot.zip \
+          "${base}/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+        unzip -q /tmp/godot.zip -d /tmp/godot-unpack
+        mv "/tmp/godot-unpack/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot-bin/godot"
+        chmod +x "$HOME/godot-bin/godot"
+
+        echo "Downloading export templates..."
+        curl -fsSL --retry 3 --retry-delay 5 -o /tmp/templates.tpz \
+          "${base}/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+        unzip -q /tmp/templates.tpz -d /tmp/tpz
+        # Godot looks for templates in a directory named after the exact version.
+        mv /tmp/tpz/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+
+        rm -f /tmp/godot.zip /tmp/templates.tpz
+
+    - name: Add Godot to PATH
+      shell: bash
+      run: echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+    - name: Report version
+      shell: bash
+      run: godot --headless --version
