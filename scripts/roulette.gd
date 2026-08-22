@@ -5,6 +5,18 @@ extends Control
 const CHIP_VALUES := [1, 5, 25, 100, 500]
 const CELL := Vector2(50, 46)
 
+const SPIN_TIME := 4.2
+const SPIN_TURNS := 5.0
+## Repeat mode spins much faster, so a long losing streak doesn't take all
+## night to play out.
+const REPEAT_SPIN_TIME := 0.8
+const REPEAT_SPIN_TURNS := 2.0
+## A beat between spins so the result stays readable.
+const REPEAT_PAUSE := 0.3
+## Safety valve: a cold streak on a small bet could otherwise run for
+## thousands of spins unattended.
+const MAX_REPEAT_SPINS := 250
+
 const COLOR_BG := Color(0.04, 0.2, 0.11)
 const COLOR_GOLD := Color(0.94, 0.78, 0.29)
 const COLOR_WIN := Color(0.5, 0.92, 0.55)
@@ -20,6 +32,12 @@ var spinning := false
 var bets := {}
 var history: Array = []
 
+## Repeat-until-win state. `repeat_template` is the layout (key -> amount)
+## re-staked before every spin of a run.
+var repeat_mode := false
+var repeat_stop := false
+var repeat_template := {}
+
 var wheel: RouletteWheel
 var balance_label: Label
 var total_bet_label: Label
@@ -28,6 +46,7 @@ var result_label: Label
 var history_box: HBoxContainer
 var back_button: Button
 var spin_button: Button
+var repeat_button: Button
 var clear_button: Button
 
 
@@ -205,6 +224,14 @@ func _build_board_panel() -> Control:
 	spin_button.pressed.connect(_on_spin_pressed)
 	action_row.add_child(spin_button)
 
+	repeat_button = Button.new()
+	repeat_button.text = "Repeat Until Win"
+	repeat_button.custom_minimum_size = Vector2(196, 54)
+	repeat_button.focus_mode = Control.FOCUS_NONE
+	_style_button(repeat_button, Color(0.42, 0.24, 0.52), 18, 10, 10)
+	repeat_button.pressed.connect(_on_repeat_pressed)
+	action_row.add_child(repeat_button)
+
 	clear_button = Button.new()
 	clear_button.text = "Clear Bets"
 	clear_button.custom_minimum_size = Vector2(140, 54)
@@ -354,6 +381,9 @@ func _style_button(button: Button, bg: Color, font_size: int, pad_h: int, pad_v:
 # --- Betting -----------------------------------------------------------------
 
 func _on_bet_button_pressed(key: String) -> void:
+	if repeat_mode:
+		_set_message("Repeat is running — press Stop Repeating to change the bet.", COLOR_GOLD)
+		return
 	if spinning:
 		return
 	if not Bank.withdraw(selected_chip):
@@ -366,7 +396,7 @@ func _on_bet_button_pressed(key: String) -> void:
 
 
 func _on_clear_pressed() -> void:
-	if spinning:
+	if _busy():
 		return
 	var refund := 0
 	for key in bets:
@@ -422,18 +452,38 @@ func _update_totals() -> void:
 
 # --- Spinning ----------------------------------------------------------------
 
+func _busy() -> bool:
+	return spinning or repeat_mode
+
+
+## Locks the controls a spin shouldn't be interrupted by. The repeat button
+## stays live during a run so it can be stopped.
+func _lock_controls(locked: bool) -> void:
+	spin_button.disabled = locked
+	clear_button.disabled = locked
+	back_button.disabled = locked
+	repeat_button.disabled = locked and not repeat_mode
+
+
 func _on_spin_pressed() -> void:
-	if spinning:
+	if _busy():
 		return
 	if _total_bet() == 0:
 		_set_message("Place a bet before spinning.", COLOR_GOLD)
 		return
 	spinning = true
-	spin_button.disabled = true
-	clear_button.disabled = true
-	back_button.disabled = true
+	_lock_controls(true)
 	_set_message("No more bets…", Color.WHITE)
 
+	var number := await _spin_wheel(SPIN_TIME, SPIN_TURNS)
+	_resolve_spin(number)
+
+	spinning = false
+	_lock_controls(false)
+
+
+## Spins the wheel to a random pocket and returns the winning number.
+func _spin_wheel(duration: float, turns: float) -> int:
 	wheel.result_index = -1
 	wheel.queue_redraw()
 
@@ -444,18 +494,101 @@ func _on_spin_pressed() -> void:
 	wheel.rotation = current
 	# The pocket lands under the top pointer when rotation == -pocket * step.
 	var target := fposmod(-pocket * step, TAU)
-	var travel := fposmod(target - current, TAU) + TAU * 5.0
+	var travel := fposmod(target - current, TAU) + TAU * turns
 	var tween := create_tween()
-	tween.tween_property(wheel, "rotation", current + travel, 4.2) \
+	tween.tween_property(wheel, "rotation", current + travel, duration) \
 		.set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
 	await tween.finished
 
 	wheel.result_index = pocket
 	wheel.queue_redraw()
-	_resolve_spin(number)
+	return number
 
 
-func _resolve_spin(number: int) -> void:
+## Re-stakes the saved layout for another spin. Returns false when the bank
+## can't cover it, leaving the balance untouched.
+func _replace_bets() -> bool:
+	var needed := 0
+	for key in repeat_template:
+		needed += int(repeat_template[key])
+	if needed <= 0 or not Bank.withdraw(needed):
+		return false
+	for key in repeat_template:
+		bets[key].amount = int(repeat_template[key])
+		_update_chip_badge(key)
+	_update_totals()
+	return true
+
+
+## Re-stakes and re-spins the same bet until it turns a profit on a single
+## spin, the bank runs dry, or the player stops it.
+func _on_repeat_pressed() -> void:
+	if repeat_mode:
+		repeat_stop = true
+		repeat_button.text = "Stopping…"
+		return
+	if spinning:
+		return
+	if _total_bet() == 0:
+		_set_message("Place the bet you want repeated first.", COLOR_GOLD)
+		return
+
+	repeat_template.clear()
+	for key in bets:
+		var amount: int = bets[key].amount
+		if amount > 0:
+			repeat_template[key] = amount
+
+	repeat_mode = true
+	repeat_stop = false
+	repeat_button.text = "Stop Repeating"
+	_lock_controls(true)
+
+	var spins := 0
+	var run_net := 0
+	while true:
+		spins += 1
+		_set_message("Repeat spin %d — no more bets…" % spins, Color.WHITE)
+		var number := await _spin_wheel(REPEAT_SPIN_TIME, REPEAT_SPIN_TURNS)
+		var net := _resolve_spin(number)
+		run_net += net
+
+		if net > 0:
+			_set_message("%d %s pays $%s — won on spin %d.%s" % [
+				number, _number_color_name(number), Bank.fmt(net), spins,
+				_run_summary(run_net)], COLOR_WIN)
+			break
+		if repeat_stop:
+			_set_message("Stopped after %d spins.%s" % [spins, _run_summary(run_net)], COLOR_GOLD)
+			break
+		if spins >= MAX_REPEAT_SPINS:
+			_set_message("Paused after %d spins with no win — press Repeat Until Win to carry on.%s" % [
+				spins, _run_summary(run_net)], COLOR_GOLD)
+			break
+		if not _replace_bets():
+			_set_message("Not enough left to repeat that bet — stopped after %d spins.%s" % [
+				spins, _run_summary(run_net)], COLOR_LOSE)
+			break
+		await get_tree().create_timer(REPEAT_PAUSE).timeout
+
+	repeat_mode = false
+	repeat_stop = false
+	repeat_button.text = "Repeat Until Win"
+	_lock_controls(false)
+
+
+## Winning the last spin doesn't mean the run made money, so say where it
+## actually ended up.
+func _run_summary(run_net: int) -> String:
+	if run_net > 0:
+		return " Up $%s over the run." % Bank.fmt(run_net)
+	if run_net < 0:
+		return " Down $%s over the run." % Bank.fmt(-run_net)
+	return " Break-even over the run."
+
+
+## Pays out the winning bets, clears the board, and returns the spin's net.
+func _resolve_spin(number: int) -> int:
 	var staked := _total_bet()
 	var returned := 0
 	for key in bets:
@@ -481,11 +614,7 @@ func _resolve_spin(number: int) -> void:
 		bets[key].amount = 0
 		_update_chip_badge(key)
 	_update_totals()
-
-	spinning = false
-	spin_button.disabled = false
-	clear_button.disabled = false
-	back_button.disabled = false
+	return net
 
 
 func _add_history(number: int) -> void:
@@ -538,7 +667,7 @@ func _on_balance_changed(new_balance: int) -> void:
 
 
 func _on_back_pressed() -> void:
-	if spinning:
+	if _busy():
 		return
 	# Refund anything still on the table before leaving.
 	var refund := 0
