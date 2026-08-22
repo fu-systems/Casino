@@ -37,8 +37,11 @@ it from the main menu at any time.
 - Place a bet with the chip buttons, then **Deal**.
 - **Hit**, **Stand**, or **Double** (double is available on your first two
   cards if you can cover the extra bet).
-- Dealer stands on all 17s. Blackjack pays **3:2**, wins pay 1:1, pushes
-  return your bet. No splits or insurance — this is the simple table.
+- Dealer stands on all 17s and peeks for a natural, so a dealer blackjack
+  ends the round immediately rather than letting you draw into it.
+- Blackjack pays **3:2** (rounded up, so a $5 blackjack pays $8), wins pay
+  1:1, pushes return your bet. No splits or insurance — this is the simple
+  table.
 
 ### Roulette
 
