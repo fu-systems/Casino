@@ -19,9 +19,11 @@ func _build_ui() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
+	var margin := SafeArea.create(20)
+	add_child(margin)
+
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	margin.add_child(center)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)

@@ -18,6 +18,40 @@ so there's nothing to install.
 
 - **Linux** — `chmod +x Casino.x86_64 && ./Casino.x86_64`
 - **Windows** — run `Casino.exe`
+- **Android** — `casino-android` holds a debug-signed `Casino.apk`
+  (arm64, `systems.fu.casino`). Install with `adb install Casino.apk`, or
+  copy it across and allow installs from unknown sources.
+
+## Screen sizes
+
+The game is designed at **1280x720** and uses Godot's `expand` stretch
+aspect, which treats that as a *minimum* in both directions and grows the
+viewport into whatever the device has spare. Nothing is letterboxed and
+nothing is clipped:
+
+| Device (landscape) | Window | Viewport |
+| --- | --- | --- |
+| 4:3 tablet | 2048x1536 | 1280x960 |
+| 16:9 phone | 1920x1080 | 1280x720 |
+| 20:9 phone | 2400x1080 | 1600x720 |
+
+Roulette is the widest scene at 1258 px, so it fits the 1280 minimum with
+22 px to spare. That margin is thin enough to lose by accident, so
+`tests/layout_fits.gd` asserts every scene still fits the design viewport —
+a layout change that would clip on a 4:3 tablet fails CI instead of
+shipping. Run it with:
+
+```bash
+godot --headless --path . tests/layout_fits.tscn
+```
+
+On mobile the app is locked out of portrait (sensor landscape, so it works
+held either way) and insets its UI from notches and camera cutouts via
+`scripts/safe_area.gd`.
+
+One honest caveat: the roulette number cells are ~4.8 mm on a phone —
+tappable but fiddly. Thirty-seven cells across a handset is inherently
+tight, and the real fix is a mobile-specific board layout.
 
 ## Running from source
 
@@ -149,7 +183,9 @@ is in progress.
 | `scripts/blackjack_strategy.gd` | Hi-Lo values, basic strategy, and count index plays |
 | `scripts/roulette.gd` + `scenes/roulette.tscn` | Roulette table |
 | `scripts/roulette_wheel.gd` | Custom-drawn spinning wheel |
-| `export_presets.cfg` | Linux + Windows export presets used by CI |
+| `scripts/safe_area.gd` | Notch/cutout-aware margin container |
+| `tests/layout_fits.gd` | Asserts every scene fits the design viewport |
+| `export_presets.cfg` | Linux, Windows, and Android export presets used by CI |
 | `.github/workflows/build.yml` | Check, export, and release pipeline |
 | `.github/actions/setup-godot/` | Composite action that installs Godot + templates |
 
@@ -179,8 +215,17 @@ via *Run workflow*:
    any parse or runtime script error.
 2. **Export** — builds Linux and Windows in parallel and uploads each as an
    artifact.
-3. **Publish release** — on a `v*` tag, zips both builds and attaches them to a
+3. **Export Android** — builds a debug-signed APK. Godot reads the SDK
+   location from Editor Settings rather than the environment, so this job
+   generates that file with `--editor --quit` and rewrites the two path keys
+   before exporting. It then checks the APK really is one, by looking for
+   `AndroidManifest.xml` and `classes.dex` inside it.
+4. **Publish release** — on a `v*` tag, zips the builds and attaches them to a
    GitHub release.
+
+A **release-signed** APK needs a real keystore; wire one in through repo
+secrets and switch the export to `--export-release` when you want to ship to
+the Play Store.
 
 Godot itself exits `0` even when scripts fail to parse, so
 `.github/scripts/assert-no-godot-errors.sh` scans the logs instead. It ignores

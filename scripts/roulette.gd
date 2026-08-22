@@ -66,10 +66,7 @@ func _build_ui() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 18)
+	var margin := SafeArea.create(18)
 	add_child(margin)
 
 	var vbox := VBoxContainer.new()
@@ -113,6 +110,9 @@ func _build_ui() -> void:
 func _build_wheel_panel() -> Control:
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 8)
+	# Centred vertically so a taller-than-design screen (a 4:3 tablet gives
+	# 1280x960) doesn't strand the table against the top edge.
+	left.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(420, 420)
@@ -156,6 +156,7 @@ func _build_board_panel() -> Control:
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", 10)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var board_panel := PanelContainer.new()
 	var panel_style := StyleBoxFlat.new()
@@ -170,9 +171,14 @@ func _build_board_panel() -> Control:
 	board_panel.add_theme_stylebox_override("panel", panel_style)
 	right.add_child(board_panel)
 
+	# Centred so a wider-than-design viewport doesn't strand the board on the
+	# left of its panel.
+	var board_center := CenterContainer.new()
+	board_panel.add_child(board_center)
+
 	var board := VBoxContainer.new()
 	board.add_theme_constant_override("separation", 4)
-	board_panel.add_child(board)
+	board_center.add_child(board)
 	_build_board(board)
 
 	# Chip selector.
