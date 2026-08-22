@@ -16,7 +16,10 @@ const COLOR_BADGE_TEXT := Color(0.15, 0.1, 0.0)
 ## Where the chip badge sits on its button. CENTRE suits bare cells like
 ## roulette's numbers, where the badge standing in for the label is exactly
 ## right; CORNER suits boards whose areas carry their name and price, where
-## a centred badge would sit on top of the words.
+## a centred badge would sit on top of the words. An area can override both
+## by carrying `meta["badge_at"]` — a point in button-local coordinates,
+## which is how the craps felt puts chips where chips physically sit on a
+## table rather than in the middle of the area.
 enum Badge { CENTRE, CORNER }
 
 ## key -> {"button": Button, "amount": int, "meta": Dictionary}
@@ -129,20 +132,22 @@ func refresh_badge(key: String) -> void:
 	var button: Button = entry.button
 	if not is_instance_valid(button):
 		return
-	var badge: Label = button.get_node_or_null("ChipBadge")
+	# Named per key, so several areas can share one button.
+	var badge_name := "ChipBadge_" + key
+	var badge: Label = button.get_node_or_null(badge_name)
 
 	if int(entry.amount) <= 0:
 		if badge != null:
 			# Renamed first so a badge added again this frame doesn't collide
 			# with the one still queued for deletion.
-			badge.name = "DeadBadge"
+			badge.name = badge_name + "_dead"
 			badge.hide()
 			badge.queue_free()
 		return
 
 	if badge == null:
 		badge = Label.new()
-		badge.name = "ChipBadge"
+		badge.name = badge_name
 		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = COLOR_BADGE
@@ -158,7 +163,9 @@ func refresh_badge(key: String) -> void:
 
 	badge.text = str(int(entry.amount))
 	badge.reset_size()
-	if badge_position == Badge.CORNER:
+	if entry.meta.has("badge_at"):
+		badge.position = Vector2(entry.meta.badge_at) - badge.size / 2.0
+	elif badge_position == Badge.CORNER:
 		badge.position = Vector2(button.size.x - badge.size.x - 3,
 			button.size.y - badge.size.y - 2)
 	else:

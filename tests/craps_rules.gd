@@ -16,6 +16,7 @@ func run() -> void:
 	await frames()
 
 	await _test_dice_distribution()
+	await _test_hit_zones()
 	await _test_come_out()
 	await _test_point_made_and_seven_out()
 	await _test_odds_caps()
@@ -89,6 +90,68 @@ func _test_dice_distribution() -> void:
 		check(drift < 0.06, "total %d came up %d times, expected about %d" % [
 			total, int(counts.get(total, 0)), int(expected)])
 	note("2d6 histogram matches the real distribution (worst drift %.1f%%)" % (worst * 100.0))
+
+
+## The felt is one painted picture with polygon hit-zones layered over it,
+## so a wrong polygon still screenshots perfectly. These assert that clicks
+## land where the paint says they should.
+func _test_hit_zones() -> void:
+	t.size = Vector2(1280, 620)
+	await frames(4)
+	var felt: CrapsTable = t.felt
+	var clean := failures
+	check(not felt.areas.is_empty(), "the felt should have built its geometry")
+
+	# Every area the game bets on must exist on the felt, and vice versa.
+	for key in t.board.bets:
+		check(felt.areas.has(key), "no felt area for the %s bet" % key)
+	for key in felt.areas:
+		check(t.board.has(key), "the felt paints %s, which is not a bet" % key)
+
+	# No two areas may overlap, or a click would be ambiguous.
+	var overlaps := 0
+	var keys: Array = felt.areas.keys()
+	for i in keys.size():
+		for j in range(i + 1, keys.size()):
+			var a: Vector2 = felt.areas[keys[i]].chip
+			if Geometry2D.is_point_in_polygon(a, felt.areas[keys[j]].poly):
+				overlaps += 1
+				fail("the %s chip spot falls inside %s" % [keys[i], keys[j]])
+	check(overlaps == 0, "chip spots should each sit in exactly one area")
+
+	# The pass line curves, so a point inside its band must hit it and a
+	# point in the bare felt just inboard of the corner must hit nothing.
+	check(_area_at(felt.areas["pass"].chip) == "pass",
+		"the pass line chip spot should hit the pass line")
+	check(_area_at(felt.areas["come"].chip) == "come",
+		"the come chip spot should hit come")
+	var corner: Vector2 = felt.areas["pass"].poly[0] + Vector2(-8, 40)
+	check(_area_at(corner) == "", "outside the felt's areas nothing should be hit")
+
+	# Inside a point box, the place strip and the come body are different
+	# bets and must not be confused for one another.
+	check(_area_at(felt.areas["place_6"].chip) == "place_6",
+		"the 6's place strip should hit place_6")
+	check(_area_at(felt.areas["come_6"].chip) == "come_6",
+		"the 6's body should hit come_6, not its place strip")
+	check(_area_at(felt.areas["dont_come_6"].chip) == "dont_come_6",
+		"the strip above the 6 should hit dont_come_6")
+
+	# The polygons really are polygons: Big 6 and Big 8 split a square on
+	# the diagonal, so each must reject the other's half.
+	check(not Geometry2D.is_point_in_polygon(felt.areas["big_8"].chip, felt.areas["big_6"].poly),
+		"Big 6 and Big 8 should split the square, not overlap it")
+	if failures == clean:
+		note("%d areas, none overlapping, and clicks land on the paint" % felt.areas.size())
+
+
+## Which bet a point on the felt belongs to, or "" for bare felt.
+func _area_at(point: Vector2) -> String:
+	var felt: CrapsTable = t.felt
+	for key in felt.areas:
+		if Geometry2D.is_point_in_polygon(point, felt.areas[key].poly):
+			return key
+	return ""
 
 
 # --- the line ----------------------------------------------------------------
