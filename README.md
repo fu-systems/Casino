@@ -43,6 +43,48 @@ it from the main menu at any time.
   1:1, pushes return your bet. No splits or insurance — this is the simple
   table.
 
+#### The shoe
+
+Cards come from a persistent shoe rather than a fresh deck each hand, which
+is what makes counting meaningful. Pick **1 to 8 decks** from the trainer
+panel; the dealer reshuffles once the shoe is down to its last **25%**, and
+**Shuffle the Shoe** forces it early. Every reshuffle resets the count, just
+as it does at a real table. Deck size and shuffling are locked while a hand
+is in play.
+
+#### Card counting trainer
+
+Runs a **Hi-Lo** count over every card you have actually seen — the hole
+card is excluded until it is turned face up.
+
+| Cards | Value |
+| --- | --- |
+| 2-6 | +1 |
+| 7-9 | 0 |
+| 10, J, Q, K, A | -1 |
+
+**Show Count** / **Hide Count** toggles the readout, so you can keep your own
+count and check it only when you want to. It shows both the running count
+and the true count (running count divided by decks remaining), since index
+plays are keyed off the true count. **Clear Count** zeroes the running count
+without touching the shoe, for restarting a practice count mid-shoe.
+
+#### Strategy trainer
+
+Two independent show/hide panels, each giving the play and a one-line reason:
+
+- **Basic Strategy** — the correct play ignoring the count, from the standard
+  dealer-stands-on-17 chart. *"HIT — Dealer's 10 will usually finish 17 or
+  better, so a stiff 16 has to improve."*
+- **Count Strategy** — the same decision with index plays from the
+  Illustrious 18 applied. *"STAND — Stand on 16 vs 10 at a true count of +0
+  or higher, otherwise hit. The count is +3, so stand."* It turns **gold**
+  whenever the count actually moves you off basic strategy, so deviations are
+  easy to spot.
+
+Because the table can't split, pairs are advised on their total rather than
+as a split decision, and the insurance index is omitted.
+
 ### Roulette
 
 - European wheel (single zero, 37 pockets).
@@ -59,7 +101,8 @@ it from the main menu at any time.
 | --- | --- |
 | `scripts/bank.gd` | Shared bankroll autoload (`Bank`) |
 | `scripts/main_menu.gd` + `scenes/main_menu.tscn` | Lobby |
-| `scripts/blackjack.gd` + `scenes/blackjack.tscn` | Blackjack table |
+| `scripts/blackjack.gd` + `scenes/blackjack.tscn` | Blackjack table, shoe, and trainer panel |
+| `scripts/blackjack_strategy.gd` | Hi-Lo values, basic strategy, and count index plays |
 | `scripts/roulette.gd` + `scenes/roulette.tscn` | Roulette table |
 | `scripts/roulette_wheel.gd` | Custom-drawn spinning wheel |
 | `export_presets.cfg` | Linux + Windows export presets used by CI |
