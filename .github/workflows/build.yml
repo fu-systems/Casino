@@ -102,10 +102,98 @@ jobs:
           path: build/${{ matrix.artifact }}/
           if-no-files-found: error
 
+  export-android:
+    name: Export Android
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+
+      # Godot 4.2+ builds Android against JDK 17, and needs keytool on PATH
+      # to create the debug keystore it signs with.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Check the Android SDK has what Godot needs
+        run: |
+          set -euo pipefail
+          echo "SDK root: ${ANDROID_SDK_ROOT:-unset}"
+          ls "$ANDROID_SDK_ROOT/platform-tools/adb" >/dev/null 2>&1 \
+            || yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools"
+          # Godot signs with apksigner, which lives in any build-tools release.
+          if ! ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner >/dev/null 2>&1; then
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;34.0.0"
+          fi
+          ls "$ANDROID_SDK_ROOT"/build-tools/
+
+      - name: Point Godot at the Android SDK
+        env:
+          GODOT_VERSION: ${{ env.GODOT_VERSION }}
+        run: |
+          set -euo pipefail
+          # Godot reads the SDK location from Editor Settings, not the
+          # environment. Generating the file first means we only rewrite two
+          # keys instead of hand-authoring the whole resource.
+          godot --headless --editor --quit --path . >/dev/null 2>&1 || true
+          settings="$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres"
+          if [ ! -f "$settings" ]; then
+            echo "::error::No editor settings at $settings"
+            ls -la "$HOME/.config/godot" || true
+            exit 1
+          fi
+          # Drop any existing values and re-add ours. [resource] is the last
+          # section in the file, so appending stays inside it.
+          sed -i -e '/^export\/android\/android_sdk_path/d' \
+                 -e '/^export\/android\/java_sdk_path/d' "$settings"
+          printf 'export/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+            "$ANDROID_SDK_ROOT" "$JAVA_HOME" >> "$settings"
+          grep -E '^export/android/' "$settings"
+
+      - name: Export Android
+        run: |
+          set -euo pipefail
+          out="$PWD/build/casino-android"
+          mkdir -p "$out"
+          # Debug-signed: a release APK needs a real keystore in secrets.
+          godot --headless --path . \
+            --export-debug "Android" "$out/Casino.apk" >/tmp/export.log 2>&1 || true
+          tail -n 20 /tmp/export.log
+
+          if [ ! -s "$out/Casino.apk" ]; then
+            echo "::error::Android export produced no APK"
+            cat /tmp/export.log
+            exit 1
+          fi
+          # An APK is a zip; check it carries the pieces that make it one.
+          unzip -l "$out/Casino.apk" | grep -qE 'AndroidManifest\.xml' \
+            || { echo "::error::APK has no AndroidManifest.xml"; exit 1; }
+          unzip -l "$out/Casino.apk" | grep -qE 'classes\.dex' \
+            || { echo "::error::APK has no classes.dex"; exit 1; }
+          ls -lh "$out"
+
+      - name: Fail on export errors
+        run: .github/scripts/assert-no-godot-errors.sh /tmp/export.log "exporting Android"
+
+      - name: Include README with the build
+        run: cp README.md build/casino-android/README.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: casino-android
+          path: build/casino-android/
+          if-no-files-found: error
+
   release:
     name: Publish release
     runs-on: ubuntu-latest
-    needs: export
+    needs: [export, export-android]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write

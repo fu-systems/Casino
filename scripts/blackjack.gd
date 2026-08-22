@@ -115,10 +115,7 @@ func _build_ui() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 20)
+	var margin := SafeArea.create(20)
 	add_child(margin)
 
 	var root_column := VBoxContainer.new()
@@ -279,15 +276,20 @@ func _build_trainer_panel() -> Control:
 	# --- Shoe ---
 	_add_section_header(column, "SHOE")
 
-	var deck_row := HBoxContainer.new()
-	deck_row.add_theme_constant_override("separation", 3)
-	column.add_child(deck_row)
-
 	var deck_caption := Label.new()
-	deck_caption.text = "Decks"
+	deck_caption.text = "Decks in the shoe"
 	deck_caption.add_theme_font_size_override("font_size", 15)
 	deck_caption.add_theme_color_override("font_color", COLOR_MUTED)
-	deck_row.add_child(deck_caption)
+	column.add_child(deck_caption)
+
+	# Two rows of four rather than eight across: inside the trainer panel
+	# eight buttons could be at most 37px wide, which is far too small to
+	# hit reliably on a phone.
+	var deck_grid := GridContainer.new()
+	deck_grid.columns = 4
+	deck_grid.add_theme_constant_override("h_separation", 4)
+	deck_grid.add_theme_constant_override("v_separation", 4)
+	column.add_child(deck_grid)
 
 	deck_locked_on = StyleBoxFlat.new()
 	deck_locked_on.bg_color = Color(0.58, 0.48, 0.19)
@@ -302,9 +304,9 @@ func _build_trainer_panel() -> Control:
 		button.text = str(n)
 		button.toggle_mode = true
 		button.button_group = deck_group
-		button.custom_minimum_size = Vector2(31, 32)
+		button.custom_minimum_size = Vector2(74, 42)
 		button.focus_mode = Control.FOCUS_NONE
-		_style_button(button, Color(0.11, 0.16, 0.12), 15, 2, 2, 6)
+		_style_button(button, Color(0.11, 0.16, 0.12), 17, 2, 2, 6)
 		var chosen := StyleBoxFlat.new()
 		chosen.bg_color = COLOR_GOLD
 		chosen.set_corner_radius_all(6)
@@ -313,7 +315,7 @@ func _build_trainer_panel() -> Control:
 		# `pressed` only fires on real clicks, so syncing the toggle state in
 		# code below can't feed back into this handler.
 		button.pressed.connect(_on_deck_count_pressed.bind(n))
-		deck_row.add_child(button)
+		deck_grid.add_child(button)
 		deck_buttons.append(button)
 
 	shuffle_button = Button.new()

@@ -23,8 +23,13 @@ Bank="*res://scripts/bank.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+; "expand" keeps the 1280x720 design size as a *minimum* in both directions
+; and grows the viewport into whatever the device has spare, so no screen
+; gets letterboxed and no layout is ever squeezed below its design width.
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
+window/stretch/aspect="expand"
+; 4 = Sensor Landscape: locked out of portrait, but usable held either way.
+window/handheld/orientation=4
 
 [rendering]
 
