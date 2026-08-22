@@ -1,0 +1,7 @@
+# Godot 4 cache/import data
+.godot/
+
+# Exports
+export.cfg
+export_credentials.cfg
+*.tmp
