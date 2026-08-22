@@ -120,6 +120,25 @@ deviations, the two ten-splitting ones, and insurance at true count +3.
 - **Spin** to watch the wheel; winning bets are paid automatically and the
   last ten numbers are shown under the wheel.
 
+#### Repeat until win
+
+**Repeat Until Win** re-stakes the bet currently on the board and keeps
+spinning — at roughly five times normal speed — until the spin turns a
+profit. "Win" means the spin paid out *more than it cost*, so a partial hit
+that still loses money on the round doesn't end the run.
+
+The same button becomes **Stop Repeating** while a run is going, so you can
+break out at any time. A run also ends on its own when:
+
+- the bank can't cover the next re-stake, or
+- it reaches a safety limit of **250 spins** — press the button again to
+  carry on from there.
+
+Winning the last spin doesn't mean the run made money, so the closing
+message reports where the whole run finished, not just the spin that ended
+it. The board, chips, Spin, Clear Bets, and Back are all locked while a run
+is in progress.
+
 ## Project layout
 
 | Path | Purpose |
