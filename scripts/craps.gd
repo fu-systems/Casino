@@ -242,10 +242,24 @@ func _on_clear_pressed() -> void:
 	_refresh()
 
 
+## Settles the table for a player walking away: every removable bet is
+## handed back, and the contracts are forfeited to the house — a contract
+## bet cannot come down, and the table doesn't pause for someone who left.
+## Returns what the walk cost.
+func _settle_walk_away() -> int:
+	var forfeited := 0
+	for key in board.staked_keys():
+		if _is_contract(key):
+			forfeited += board.take(key)
+		else:
+			board.refund(key)
+	return forfeited
+
+
 func _on_back_pressed() -> void:
 	if rolling:
 		return
-	board.refund_all()
+	_settle_walk_away()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 
@@ -699,8 +713,12 @@ func _describe_bets() -> void:
 		var price := "%d TO %d" % [int(t[0]), int(t[1])]
 		felt.set_text("come_%d" % number, "COME %d" % number, "1 TO 1", "edge 1.41%")
 		felt.set_text("dont_come_%d" % number, "DON'T COME %d" % number, "1 TO 1", "edge 1.36%")
-		felt.set_text("come_odds_%d" % number, "ODDS", price, "no edge")
-		felt.set_text("dont_come_odds_%d" % number, "LAY", price, "no edge")
+		# The 3-4-5x multiple is printed on the take-odds spot; the lay pays
+		# the same odds the other way up, so its price is inverted.
+		felt.set_text("come_odds_%d" % number,
+			"ODDS %dx" % int(ODDS_MULTIPLE[number]), price, "no edge")
+		felt.set_text("dont_come_odds_%d" % number, "LAY ODDS",
+			"%d TO %d" % [int(t[1]), int(t[0])], "no edge")
 
 	for number in HARD_PAYS:
 		felt.set_text("hard_%d" % number, "HARD %d" % number,
@@ -903,6 +921,15 @@ func _add_history(total: int) -> void:
 
 func _refresh() -> void:
 	felt.point = point
+	# A number carrying a come or don't come bet grows its odds box.
+	var come_open: Array = []
+	var dont_open: Array = []
+	for number in POINTS:
+		if board.amount("come_%d" % number) > 0:
+			come_open.append(number)
+		if board.amount("dont_come_%d" % number) > 0:
+			dont_open.append(number)
+	felt.set_odds_open(come_open, dont_open)
 	point_label.text = "Come-out roll" if point == 0 else "Point:  %d" % point
 	roll_label.text = "Rolling…" if rolling else "Last roll: %d" % (die_a.value + die_b.value)
 	if history.is_empty() and not rolling:

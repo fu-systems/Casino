@@ -220,9 +220,12 @@ House rules, stated on screen because they change what a bet does:
   off on request except the two contract bets — the pass line once a point
   is on, and come bets that have travelled to their number. Those ride
   until they win or lose. Odds, place bets, the props and the whole don't
-  side are always yours to pick up between rolls. (Leaving the table
-  settles everything back to you, contracts included — the alternative is
-  confiscating them.)
+  side are always yours to pick up between rolls.
+- **Walking away costs the contracts.** Leaving the table hands back every
+  removable bet, but the pass line and travelled come bets can't come down
+  and the game doesn't wait for someone who left — they are forfeited.
+  That is the price of walking out mid-hand; make the point or seven out
+  first if you want to leave whole.
 - Place and odds payouts **round down to the dollar**, as a dealer does. Bet
   the 6 and 8 in multiples of $6 and the rest in multiples of $5 for the
   full price.
@@ -253,7 +256,13 @@ House rules, stated on screen because they change what a bet does:
 A come bet is the pass line one roll out of step. Put it on the COME bar
 while a point is on and it wins on 7 or 11, loses to craps, and otherwise
 **travels to the number rolled** and waits there for that number to repeat.
-Tap a travelled come bet to lay odds behind it.
+
+The moment a come or don't come bet lands on a number, its box grows a
+gold **odds spot** — *ODDS 3x/4x/5x* with the true price for a come bet,
+*LAY ODDS* for a don't come. Tap it (or the bet itself) to put chips
+behind the bet at the Vegas 3-4-5x limits: taken odds pay 2:1 on the 4
+and 10, 3:2 on the 5 and 9, 6:5 on the 6 and 8, and lays pay the same
+odds the other way up.
 
 Several can be live at once, each on its own number with its own odds, and
 one seven kills the lot. Don't come is the mirror: it travels the same way,

@@ -31,6 +31,7 @@ func run() -> void:
 	await _test_big_six_and_eight()
 	await _test_come_out_sleeps_place_and_odds()
 	await _test_clear_bets()
+	await _test_walking_away()
 	await _test_money_conservation()
 
 	t.queue_free()
@@ -311,6 +312,7 @@ func _test_come_travels_and_pays() -> void:
 	await _roll(4, 5)          # come travels to the 9
 	check(t.board.amount("come") == 0, "the come bar should be empty once the bet travels")
 	check(t.board.amount("come_9") == 100, "the come bet should sit on the 9")
+	check(9 in t.felt.come_odds_open, "the 9's take-odds box should open with a come bet on it")
 
 	# Odds go behind it, and both pay when the number repeats.
 	_stake("come_odds_9", 100)
@@ -319,6 +321,7 @@ func _test_come_travels_and_pays() -> void:
 	check(Bank.balance - start == 100 + 100 + 100 + 150,
 		"a come 9 with $100 odds should return $450, returned $%d" % (Bank.balance - start))
 	check(t.board.amount("come_9") == 0, "a paid come bet comes down")
+	check(not (9 in t.felt.come_odds_open), "the take-odds box closes when the bet comes down")
 
 	# 7 and 11 pay on the bar and the bet stays there; craps takes it.
 	_reset()
@@ -666,6 +669,35 @@ func _test_clear_bets() -> void:
 	t.board.refund_all()
 	t.point = 0
 	note("clear refunds everything but the pass line and travelled come bets")
+
+
+func _test_walking_away() -> void:
+	# Leaving the table hands back every removable bet, but the contracts
+	# can't come down and the table doesn't wait — they are forfeited.
+	_reset()
+	_stake("pass", 100)
+	await _roll(3, 3)          # point 6
+	_stake("pass_odds", 200)
+	_stake("place_8", 60)
+	_stake("come", 25)
+	await _roll(4, 5)          # the come bet travels to the 9
+	var start: int = Bank.balance
+	var forfeited: int = t._settle_walk_away()
+	check(forfeited == 100 + 25,
+		"walking away should forfeit the pass flat and the come 9, forfeited $%d" % forfeited)
+	check(Bank.balance - start == 200 + 60,
+		"walking away should refund the odds and the place bet, got %+d" % (Bank.balance - start))
+	check(t.board.total() == 0, "nothing stays on the table once the player has left")
+
+	# On a come-out there are no contracts yet, so leaving costs nothing.
+	_reset()
+	_stake("pass", 100)
+	_stake("field", 50)
+	start = Bank.balance
+	forfeited = t._settle_walk_away()
+	check(forfeited == 0 and Bank.balance - start == 150,
+		"leaving during the come-out refunds everything")
+	note("walking away refunds removable bets and forfeits the contracts")
 
 
 func _test_money_conservation() -> void:

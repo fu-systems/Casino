@@ -67,6 +67,20 @@ var edges_shown := false:
 		edges_shown = value
 		queue_redraw()
 
+## Numbers currently carrying a come or don't come bet. While a bet sits on
+## a number, its box grows a little take-odds (or lay-odds) spot, since that
+## is the one thing a player can still do to a travelled bet.
+var come_odds_open: Array = []
+var dont_odds_open: Array = []
+
+
+func set_odds_open(come_numbers: Array, dont_numbers: Array) -> void:
+	if come_numbers == come_odds_open and dont_numbers == dont_odds_open:
+		return
+	come_odds_open = come_numbers
+	dont_odds_open = dont_numbers
+	queue_redraw()
+
 var _rows := {}
 
 
@@ -337,8 +351,13 @@ func _draw_boxes() -> void:
 		draw_rect(box, LINE, false, 2.0)
 		var body: Rect2 = _bbox(areas["come_%d" % number].poly)
 		var place: Rect2 = _bbox(areas["place_%d" % number].poly)
+		# The number spans the box until the odds spot opens, then shrinks
+		# into the come half so the two don't print on top of each other.
+		var name_w: float = body.size.x if number in come_odds_open else box.size.x
+		var name_size := int(clampf(minf(body.size.y * 0.62,
+			name_w / maxf(2.0, String(BOX_NAMES[number]).length()) * 1.55), 13, 32))
 		_centre(String(BOX_NAMES[number]), Rect2(box.position.x, body.position.y,
-			box.size.x, body.size.y), int(clampf(body.size.y * 0.62, 15, 32)), TEXT)
+			name_w, body.size.y), name_size, TEXT)
 		_text(_pays("place_%d" % number),
 			Rect2(place.position.x + 6, place.position.y, place.size.x - 12, place.size.y),
 			12, LINE_DIM, HORIZONTAL_ALIGNMENT_LEFT)
@@ -351,6 +370,25 @@ func _draw_boxes() -> void:
 			Vector2(box.end.x, strip.end.y), LINE_DIM, 1.0)
 		draw_line(Vector2(box.position.x, place.position.y),
 			Vector2(box.end.x, place.position.y), LINE_DIM, 1.0)
+
+		# While a bet is on the number, its odds spot becomes a visible box
+		# — drawn exactly on the hit-zone that was always there, so paint
+		# and clicks stay one thing.
+		if number in come_odds_open:
+			var spot: Rect2 = _bbox(areas["come_odds_%d" % number].poly).grow(-3.0)
+			draw_rect(spot, Color(1, 1, 1, 0.07), true)
+			draw_rect(spot, GOLD, false, 1.2)
+			_centre(_label("come_odds_%d" % number),
+				Rect2(spot.position.x, spot.position.y + spot.size.y * 0.16,
+					spot.size.x, spot.size.y * 0.34), 11, GOLD)
+			_centre(_pays("come_odds_%d" % number),
+				Rect2(spot.position.x, spot.position.y + spot.size.y * 0.52,
+					spot.size.x, spot.size.y * 0.3), 10, LINE_DIM)
+		if number in dont_odds_open:
+			var lay_spot: Rect2 = _bbox(areas["dont_come_odds_%d" % number].poly).grow(-2.0)
+			draw_rect(lay_spot, Color(1, 1, 1, 0.07), true)
+			draw_rect(lay_spot, GOLD, false, 1.2)
+			_centre(_label("dont_come_odds_%d" % number), lay_spot, 10, GOLD)
 
 	var dc: Rect2 = _rows["dont_come"]
 	_centre("DON'T\nCOME",
