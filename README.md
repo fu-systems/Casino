@@ -209,9 +209,20 @@ House rules, stated on screen because they change what a bet does:
 - Odds are capped **3-4-5x** (3x on the 4 and 10, 4x on the 5 and 9, 5x on
   the 6 and 8), so the most you can win behind the line is six times it
   whatever the point. **Max Odds** tops every odds bet up to its cap.
-- Winners are paid and come down, **except place bets and Big 6/8**, which
-  stay working until they lose. That is the real table rule, and it is what
-  makes those bets worth making.
+- **Winners stay up.** As on a live table, a paid bet keeps working — the
+  line, place bets, the field, hardways and the props are all paid and left
+  standing (the horn and C & E stay whole, their losing portions bought
+  back out of the winnings). The exceptions are the real ones: a come bet
+  that made its number comes down with its pay, and so do odds once their
+  point resolves. On the bar twelve the don't side neither wins nor loses —
+  it just stands off where it is.
+- **Clear Bets takes down what a dealer would let you.** Everything comes
+  off on request except the two contract bets — the pass line once a point
+  is on, and come bets that have travelled to their number. Those ride
+  until they win or lose. Odds, place bets, the props and the whole don't
+  side are always yours to pick up between rolls. (Leaving the table
+  settles everything back to you, contracts included — the alternative is
+  confiscating them.)
 - Place and odds payouts **round down to the dollar**, as a dealer does. Bet
   the 6 and 8 in multiples of $6 and the rest in multiples of $5 for the
   full price.
@@ -324,7 +335,7 @@ godot --headless --path . res://tests/run_all.tscn
 | `layout_fits` | Every scene fits the 1280x720 design viewport |
 | `blackjack_rules` | Shoe composition, the Hi-Lo count against the undealt remainder, both strategy charts and their indices, split stakes, split aces, insurance |
 | `roulette_rules` | Wheel order and colours, the board covering 1-36 once, payouts, and every way a repeat-until-win run can stop |
-| `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, what a seven-out takes, and that every hit-zone on the felt matches the paint |
+| `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, what a seven-out takes, which winners stay up, what Clear Bets may and may not remove, and that every hit-zone on the felt matches the paint |
 | `baccarat_rules` | All 80 cells of the banker tableau, naturals, pair detection, and commission arithmetic |
 
 Three of those are worth calling out. The craps suite rolls the dice 180,000
