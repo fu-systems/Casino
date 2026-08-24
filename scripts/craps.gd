@@ -212,25 +212,63 @@ func _on_max_odds_pressed() -> void:
 	_refresh()
 
 
+## Whether the player may take a bet down right now. Two bets are contracts
+## once the dice have made them one: the pass line after a point is
+## established, and a come bet that has travelled to its number. They ride
+## until they win or lose. Everything else — odds, place bets, the props,
+## and the whole don't side — is the player's to pick up between rolls.
+func _is_contract(key: String) -> bool:
+	if key == "pass":
+		return point != 0
+	return key.begins_with("come_") and not key.begins_with("come_odds")
+
+
 func _on_clear_pressed() -> void:
 	if rolling:
 		return
-	if board.refund_all() > 0:
+	var kept := 0
+	var refunded := 0
+	for key in board.staked_keys():
+		if _is_contract(key):
+			kept += board.amount(key)
+		else:
+			refunded += board.refund(key)
+	if refunded > 0 and kept > 0:
+		_set_message("Removable bets refunded. $%s of contract bets ride until they win or lose." % Bank.fmt(kept), COLOR_GOLD)
+	elif refunded > 0:
 		_set_message("Bets cleared and refunded.", Color.WHITE)
+	elif kept > 0:
+		_set_message("The pass line and travelled come bets are contracts — they ride until they win or lose.", COLOR_GOLD)
 	_refresh()
+
+
+## Settles the table for a player walking away: every removable bet is
+## handed back, and the contracts are forfeited to the house — a contract
+## bet cannot come down, and the table doesn't pause for someone who left.
+## Returns what the walk cost.
+func _settle_walk_away() -> int:
+	var forfeited := 0
+	for key in board.staked_keys():
+		if _is_contract(key):
+			forfeited += board.take(key)
+		else:
+			board.refund(key)
+	return forfeited
 
 
 func _on_back_pressed() -> void:
 	if rolling:
 		return
-	board.refund_all()
+	_settle_walk_away()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 
 # --- settling ----------------------------------------------------------------
 
-## Pays a bet at num:den and returns the stake with it. Payouts round down
-## to the dollar, which is what a dealer does with an odd-money bet.
+## Pays a bet at num:den and returns the stake with it — for the bets that
+## genuinely come down with their pay: travelled come bets, and odds once
+## their point resolves. Payouts round down to the dollar, which is what a
+## dealer does with an odd-money bet.
 func _pay(key: String, num: int, den: int) -> int:
 	var stake := board.take(key)
 	if stake <= 0:
@@ -240,7 +278,9 @@ func _pay(key: String, num: int, den: int) -> int:
 	return winnings
 
 
-## Pays the winnings but leaves the stake working, for place and Big 6/8.
+## Pays the winnings and leaves the stake standing — the default on a live
+## table, where a paid bet keeps working until it loses or the player takes
+## it down.
 func _pay_and_leave(key: String, num: int, den: int) -> int:
 	var stake := board.amount(key)
 	if stake <= 0:
@@ -330,8 +370,8 @@ func _resolve_field(total: int, notes: Array) -> void:
 	if stake <= 0:
 		return
 	if total in FIELD_NUMBERS:
-		var won := _pay("field", int(FIELD_BONUS.get(total, 1)), 1)
-		notes.append("Field %d pays $%s" % [total, Bank.fmt(won)])
+		var won := _pay_and_leave("field", int(FIELD_BONUS.get(total, 1)), 1)
+		notes.append("Field %d pays $%s and stays up" % [total, Bank.fmt(won)])
 	else:
 		_lose("field")
 		notes.append("Field loses $%s" % Bank.fmt(stake))
@@ -344,42 +384,46 @@ func _resolve_props(total: int, notes: Array) -> void:
 			continue
 		var prop: Dictionary = PROPS[key]
 		if total in prop.numbers:
-			var won := _pay(key, int(prop.pays), 1)
-			notes.append("%s pays $%s" % [prop.label, Bank.fmt(won)])
+			var won := _pay_and_leave(key, int(prop.pays), 1)
+			notes.append("%s pays $%s and stays up" % [prop.label, Bank.fmt(won)])
 		else:
 			_lose(key)
 			notes.append("%s loses $%s" % [prop.label, Bank.fmt(stake)])
 
 
-## The horn is four bets in one. The winning quarter pays its own odds and
-## the other three quarters are simply lost.
+## The horn is four bets in one. On a win the winning quarter pays its own
+## odds, the three losing quarters are bought back out of the winnings, and
+## the whole horn stays working — which is exactly how a stickman keeps it.
 func _resolve_horn(total: int, notes: Array) -> void:
-	var stake := board.take("horn")
+	var stake := board.amount("horn")
 	if stake <= 0:
 		return
 	if not (total in [2, 3, 11, 12]):
+		_lose("horn")
 		notes.append("Horn loses $%s" % Bank.fmt(stake))
 		return
 	var pays: int = 30 if total in [2, 12] else ELEVEN_PAYS
-	var back := roundi(stake / 4.0 * (pays + 1))
-	Bank.deposit(back)
-	notes.append("Horn %d returns $%s of $%s" % [total, Bank.fmt(back), Bank.fmt(stake)])
+	var won := roundi(stake / 4.0 * (pays - 3))
+	Bank.deposit(won)
+	notes.append("Horn %d pays $%s and stays up" % [total, Bank.fmt(won)])
 
 
-## Craps and Eleven: half on any craps, half on the yo.
+## Craps and Eleven: half on any craps, half on the yo. As with the horn, a
+## win pays the winning half, re-buys the losing half, and stays working.
 func _resolve_c_and_e(total: int, notes: Array) -> void:
-	var stake := board.take("c_and_e")
+	var stake := board.amount("c_and_e")
 	if stake <= 0:
 		return
-	var back := 0
+	var won := 0
 	if total in [2, 3, 12]:
-		back = roundi(stake / 2.0 * (ANY_CRAPS_PAYS + 1))
+		won = roundi(stake / 2.0 * (ANY_CRAPS_PAYS - 1))
 	elif total == 11:
-		back = roundi(stake / 2.0 * (ELEVEN_PAYS + 1))
-	if back > 0:
-		Bank.deposit(back)
-		notes.append("C & E %d returns $%s of $%s" % [total, Bank.fmt(back), Bank.fmt(stake)])
+		won = roundi(stake / 2.0 * (ELEVEN_PAYS - 1))
+	if won > 0:
+		Bank.deposit(won)
+		notes.append("C & E %d pays $%s and stays up" % [total, Bank.fmt(won)])
 	else:
+		_lose("c_and_e")
 		notes.append("C & E loses $%s" % Bank.fmt(stake))
 
 
@@ -392,22 +436,24 @@ func _resolve_hardways(total: int, hard: bool, notes: Array) -> void:
 		if stake <= 0:
 			continue
 		if total == number and hard:
-			var won := _pay(key, int(HARD_PAYS[number]), 1)
-			notes.append("Hard %d pays $%s" % [number, Bank.fmt(won)])
+			var won := _pay_and_leave(key, int(HARD_PAYS[number]), 1)
+			notes.append("Hard %d pays $%s and stays up" % [number, Bank.fmt(won)])
 		elif total == number or total == 7:
 			_lose(key)
 			notes.append("Hard %d loses $%s" % [number, Bank.fmt(stake)])
 
 
 ## A come bet sitting on the bar wins on 7 or 11, loses on craps, and
-## otherwise travels to the number rolled and waits there. The don't come
-## bet is its mirror, barring the twelve.
+## otherwise travels to the number rolled and waits there. A winner is paid
+## where it lies and stays on the bar as a fresh come bet — a dealer pays
+## next to the chips and leaves them unless asked. The don't come bet is its
+## mirror, barring the twelve; on the bar twelve it simply stands off.
 func _resolve_come_bar(total: int, notes: Array) -> void:
 	var come := board.amount("come")
 	if come > 0:
 		if total == 7 or total == 11:
-			var won := _pay("come", 1, 1)
-			notes.append("Come wins $%s" % Bank.fmt(won))
+			var won := _pay_and_leave("come", 1, 1)
+			notes.append("Come pays $%s and stays on the bar" % Bank.fmt(won))
 		elif total in [2, 3, 12]:
 			_lose("come")
 			notes.append("Come loses $%s to craps" % Bank.fmt(come))
@@ -419,11 +465,10 @@ func _resolve_come_bar(total: int, notes: Array) -> void:
 	var dont := board.amount("dont_come")
 	if dont > 0:
 		if total in [2, 3]:
-			var won := _pay("dont_come", 1, 1)
-			notes.append("Don't come wins $%s" % Bank.fmt(won))
+			var won := _pay_and_leave("dont_come", 1, 1)
+			notes.append("Don't come pays $%s and stays on the bar" % Bank.fmt(won))
 		elif total == 12:
-			_push("dont_come")
-			notes.append("Don't come pushes on the bar twelve")
+			notes.append("Bar twelve — the don't come stands off")
 		elif total == 7 or total == 11:
 			_lose("dont_come")
 			notes.append("Don't come loses $%s" % Bank.fmt(dont))
@@ -522,23 +567,25 @@ func _resolve_big(total: int, notes: Array) -> void:
 
 func _resolve_come_out(total: int, notes: Array) -> String:
 	if total == 7 or total == 11:
-		var won := _pay("pass", 1, 1)
+		var won := _pay_and_leave("pass", 1, 1)
 		var lost := _lose("dont_pass")
 		if lost > 0:
 			notes.append("Don't pass down $%s" % Bank.fmt(lost))
-		return "%d — a natural. Pass line wins $%s." % [total, Bank.fmt(won)]
+		if won > 0:
+			return "%d — a natural. Pass line pays $%s and stays up." % [total, Bank.fmt(won)]
+		return "%d — a natural." % total
 	if total in [2, 3, 12]:
 		var lost := _lose("pass")
 		if lost > 0:
 			notes.append("Pass line down $%s" % Bank.fmt(lost))
 		if total == 12:
-			# Barring the twelve is where the don't side's edge goes.
-			var pushed := _push("dont_pass")
-			if pushed > 0:
-				notes.append("Don't pass pushes on the bar twelve")
-			return "12 — craps, but the twelve is barred, so the don't side pushes."
-		var won := _pay("dont_pass", 1, 1)
-		return "%d — craps. Don't pass wins $%s." % [total, Bank.fmt(won)]
+			# Barring the twelve is where the don't side's edge goes: the
+			# bet neither wins nor loses, it just stands where it is.
+			return "12 — craps, but the twelve is barred, so the don't side stands off."
+		var won := _pay_and_leave("dont_pass", 1, 1)
+		if won > 0:
+			return "%d — craps. Don't pass pays $%s and stays up." % [total, Bank.fmt(won)]
+		return "%d — craps." % total
 	point = total
 	return "Point is %d. Roll it again before a seven." % total
 
@@ -546,21 +593,23 @@ func _resolve_come_out(total: int, notes: Array) -> String:
 func _resolve_point_roll(total: int, notes: Array) -> String:
 	if total == point:
 		var made := point
-		var won := _pay("pass", 1, 1)
+		# The flat bet stays for the next come-out; only the odds come down,
+		# there being no point left for them to ride.
+		var won := _pay_and_leave("pass", 1, 1)
 		var o: Array = TRUE_ODDS[made]
 		won += _pay("pass_odds", int(o[0]), int(o[1]))
 		var lost := _lose("dont_pass") + _lose("dont_pass_odds")
 		if lost > 0:
 			notes.append("Don't pass down $%s" % Bank.fmt(lost))
 		point = 0
-		return "%d — point made! Pass line pays $%s." % [made, Bank.fmt(won)]
+		return "%d — point made! Pass line pays $%s and stays up." % [made, Bank.fmt(won)]
 	if total == 7:
 		var lost := _lose("pass") + _lose("pass_odds")
-		var won := _pay("dont_pass", 1, 1)
+		var won := _pay_and_leave("dont_pass", 1, 1)
 		var o: Array = TRUE_ODDS[point]
 		won += _pay("dont_pass_odds", int(o[1]), int(o[0]))
 		if won > 0:
-			notes.append("Don't pass pays $%s" % Bank.fmt(won))
+			notes.append("Don't pass pays $%s and stays up" % Bank.fmt(won))
 		point = 0
 		return "Seven out. The line loses $%s and the dice pass on." % Bank.fmt(lost)
 	return "%d. Point is still %d." % [total, point]
@@ -664,8 +713,12 @@ func _describe_bets() -> void:
 		var price := "%d TO %d" % [int(t[0]), int(t[1])]
 		felt.set_text("come_%d" % number, "COME %d" % number, "1 TO 1", "edge 1.41%")
 		felt.set_text("dont_come_%d" % number, "DON'T COME %d" % number, "1 TO 1", "edge 1.36%")
-		felt.set_text("come_odds_%d" % number, "ODDS", price, "no edge")
-		felt.set_text("dont_come_odds_%d" % number, "LAY", price, "no edge")
+		# The 3-4-5x multiple is printed on the take-odds spot; the lay pays
+		# the same odds the other way up, so its price is inverted.
+		felt.set_text("come_odds_%d" % number,
+			"ODDS %dx" % int(ODDS_MULTIPLE[number]), price, "no edge")
+		felt.set_text("dont_come_odds_%d" % number, "LAY ODDS",
+			"%d TO %d" % [int(t[1]), int(t[0])], "no edge")
 
 	for number in HARD_PAYS:
 		felt.set_text("hard_%d" % number, "HARD %d" % number,
@@ -816,7 +869,11 @@ func _build_rail() -> Control:
 	bottom.add_child(history_box)
 
 	var rules := Label.new()
-	rules.text = "Place bets and odds are off on the come-out · odds capped 3-4-5x · place and Big 6/8 stay working after a win"
+	rules.text = "Winners stay up, as at a live table — travelled come bets and odds come down with pay. Place bets and odds sit out the come-out; odds capped 3-4-5x."
+	# Wraps when squeezed, so the sentence can't widen the scene's minimum.
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rules.custom_minimum_size = Vector2(300, 0)
 	rules.add_theme_font_size_override("font_size", 12)
 	rules.add_theme_color_override("font_color", COLOR_MUTED)
 	bottom.add_child(rules)
@@ -864,6 +921,15 @@ func _add_history(total: int) -> void:
 
 func _refresh() -> void:
 	felt.point = point
+	# A number carrying a come or don't come bet grows its odds box.
+	var come_open: Array = []
+	var dont_open: Array = []
+	for number in POINTS:
+		if board.amount("come_%d" % number) > 0:
+			come_open.append(number)
+		if board.amount("dont_come_%d" % number) > 0:
+			dont_open.append(number)
+	felt.set_odds_open(come_open, dont_open)
 	point_label.text = "Come-out roll" if point == 0 else "Point:  %d" % point
 	roll_label.text = "Rolling…" if rolling else "Last roll: %d" % (die_a.value + die_b.value)
 	if history.is_empty() and not rolling:

@@ -30,6 +30,8 @@ func run() -> void:
 	await _test_props()
 	await _test_big_six_and_eight()
 	await _test_come_out_sleeps_place_and_odds()
+	await _test_clear_bets()
+	await _test_walking_away()
 	await _test_money_conservation()
 
 	t.queue_free()
@@ -157,14 +159,17 @@ func _area_at(point: Vector2) -> String:
 # --- the line ----------------------------------------------------------------
 
 func _test_come_out() -> void:
+	# Winners are paid their winnings and the stake stays on the layout, as
+	# a dealer leaves it — so a $100 line bet nets +$100 and keeps riding.
 	for natural in [[3, 4], [5, 6]]:
 		_reset()
 		_stake("pass", 100)
 		_stake("dont_pass", 100)
 		var start: int = Bank.balance
 		await _roll(int(natural[0]), int(natural[1]))
-		check(Bank.balance - start == 200,
-			"a natural should pay the pass line $200 back and take the don't, got %+d" % (Bank.balance - start))
+		check(Bank.balance - start == 100,
+			"a natural should pay the pass $100 and take the don't, got %+d" % (Bank.balance - start))
+		check(t.board.amount("pass") == 100, "a winning pass line stays up")
 		check(t.point == 0, "a natural leaves the point off")
 
 	for craps in [[1, 1], [1, 2]]:
@@ -173,18 +178,21 @@ func _test_come_out() -> void:
 		_stake("dont_pass", 100)
 		var start: int = Bank.balance
 		await _roll(int(craps[0]), int(craps[1]))
-		check(Bank.balance - start == 200,
-			"craps should pay the don't $200 back and take the pass, got %+d" % (Bank.balance - start))
+		check(Bank.balance - start == 100,
+			"craps should pay the don't $100 and take the pass, got %+d" % (Bank.balance - start))
+		check(t.board.amount("dont_pass") == 100, "a winning don't pass stays up")
 
 	# The barred twelve is where the don't side's edge comes from: the pass
-	# line loses but the don't bet only pushes.
+	# line loses but the don't bet just stands off where it is.
 	_reset()
 	_stake("pass", 100)
 	_stake("dont_pass", 100)
 	var start: int = Bank.balance
 	await _roll(6, 6)
-	check(Bank.balance - start == 100,
-		"a barred twelve should return the don't stake only, got %+d" % (Bank.balance - start))
+	check(Bank.balance - start == 0,
+		"a barred twelve moves no money for the don't, got %+d" % (Bank.balance - start))
+	check(t.board.amount("dont_pass") == 100, "the don't stands off on the bar twelve")
+	check(t.board.amount("pass") == 0, "the pass line still loses to the twelve")
 
 	_reset()
 	_stake("pass", 100)
@@ -201,7 +209,8 @@ func _test_point_made_and_seven_out() -> void:
 	check(t.point == 6, "the point should be 6")
 	var start: int = Bank.balance
 	await _roll(2, 4)
-	check(Bank.balance - start == 200, "making the point pays 1:1, got %+d" % (Bank.balance - start))
+	check(Bank.balance - start == 100, "making the point pays 1:1, got %+d" % (Bank.balance - start))
+	check(t.board.amount("pass") == 100, "the paid pass line stays up for the next come-out")
 	check(t.point == 0, "making the point turns it off")
 
 	_reset()
@@ -211,8 +220,9 @@ func _test_point_made_and_seven_out() -> void:
 	check(t.point == 8, "the point should be 8")
 	start = Bank.balance
 	await _roll(3, 4)
-	check(Bank.balance - start == 200,
+	check(Bank.balance - start == 100,
 		"sevening out pays the don't 1:1 and takes the line, got %+d" % (Bank.balance - start))
+	check(t.board.amount("dont_pass") == 100, "the paid don't pass stays up")
 	check(t.point == 0, "a seven-out turns the point off")
 	note("the point pays the line when made and the don't when it sevens out")
 
@@ -265,11 +275,14 @@ func _test_odds_payouts() -> void:
 		_stake("pass_odds", 100)
 		var start: int = Bank.balance
 		await _roll(_split(number)[0], _split(number)[1])
-		# $100 line at 1:1 plus $100 odds at true price, both stakes back.
-		var want: int = 100 + 100 + 100 + int(pays[number])
+		# The line pays $100 and stays up; the odds come down with their pay,
+		# there being no point left for them to ride.
+		var want: int = 100 + 100 + int(pays[number])
 		check(Bank.balance - start == want,
-			"making the %d with $100 odds should return $%d, returned $%d" % [
+			"making the %d with $100 odds should pay $%d, paid $%d" % [
 				number, want, Bank.balance - start])
+		check(t.board.amount("pass") == 100, "the paid line stays up")
+		check(t.board.amount("pass_odds") == 0, "the paid odds come down")
 
 	# Laying odds against the point wins the odds the other way up.
 	var lay_wins := {4: 50, 5: 66, 6: 83, 8: 83, 9: 66, 10: 50}
@@ -280,10 +293,12 @@ func _test_odds_payouts() -> void:
 		_stake("dont_pass_odds", 100)
 		var start: int = Bank.balance
 		await _roll(3, 4)
-		var want: int = 100 + 100 + 100 + int(lay_wins[number])
+		var want: int = 100 + 100 + int(lay_wins[number])
 		check(Bank.balance - start == want,
-			"a $100 lay against the %d should return $%d, returned $%d" % [
+			"a $100 lay against the %d should pay $%d, paid $%d" % [
 				number, want, Bank.balance - start])
+		check(t.board.amount("dont_pass") == 100, "the paid don't stays up")
+		check(t.board.amount("dont_pass_odds") == 0, "the paid lay comes down")
 	note("odds pay true price both ways: 2:1, 3:2, 6:5, and the inverse laid")
 
 
@@ -297,6 +312,7 @@ func _test_come_travels_and_pays() -> void:
 	await _roll(4, 5)          # come travels to the 9
 	check(t.board.amount("come") == 0, "the come bar should be empty once the bet travels")
 	check(t.board.amount("come_9") == 100, "the come bet should sit on the 9")
+	check(9 in t.felt.come_odds_open, "the 9's take-odds box should open with a come bet on it")
 
 	# Odds go behind it, and both pay when the number repeats.
 	_stake("come_odds_9", 100)
@@ -305,14 +321,16 @@ func _test_come_travels_and_pays() -> void:
 	check(Bank.balance - start == 100 + 100 + 100 + 150,
 		"a come 9 with $100 odds should return $450, returned $%d" % (Bank.balance - start))
 	check(t.board.amount("come_9") == 0, "a paid come bet comes down")
+	check(not (9 in t.felt.come_odds_open), "the take-odds box closes when the bet comes down")
 
-	# 7 and 11 win on the bar; craps takes it.
+	# 7 and 11 pay on the bar and the bet stays there; craps takes it.
 	_reset()
 	t.point = 6
 	_stake("come", 100)
 	start = Bank.balance
 	await _roll(5, 6)
-	check(Bank.balance - start == 200, "an 11 pays the come bar 1:1, got %+d" % (Bank.balance - start))
+	check(Bank.balance - start == 100, "an 11 pays the come bar 1:1, got %+d" % (Bank.balance - start))
+	check(t.board.amount("come") == 100, "a paid come bet stays on the bar")
 
 	_reset()
 	t.point = 6
@@ -337,22 +355,25 @@ func _test_dont_come() -> void:
 	check(Bank.balance - start == 100 + 100 + 150 + 100,
 		"a don't come 5 with a $150 lay should return $450, returned $%d" % (Bank.balance - start))
 
-	# 2 and 3 pay it on the bar, 12 pushes, 7 and 11 take it.
+	# 2 and 3 pay it on the bar and it stays; 12 stands it off; 7 and 11
+	# take it.
 	for craps in [[1, 1], [1, 2]]:
 		_reset()
 		t.point = 6
 		_stake("dont_come", 100)
 		start = Bank.balance
 		await _roll(int(craps[0]), int(craps[1]))
-		check(Bank.balance - start == 200,
+		check(Bank.balance - start == 100,
 			"craps pays the don't come bar 1:1, got %+d" % (Bank.balance - start))
+		check(t.board.amount("dont_come") == 100, "a paid don't come stays on the bar")
 
 	_reset()
 	t.point = 6
 	_stake("dont_come", 100)
 	start = Bank.balance
 	await _roll(6, 6)
-	check(Bank.balance - start == 100, "the barred twelve pushes the don't come bar")
+	check(Bank.balance - start == 0, "the barred twelve moves no money")
+	check(t.board.amount("dont_come") == 100, "the don't come stands off on the bar twelve")
 
 	_reset()
 	t.point = 6
@@ -429,9 +450,10 @@ func _test_field() -> void:
 		_stake("field", 100)
 		var start: int = Bank.balance
 		await _roll(_split(number)[0], _split(number)[1])
-		check(Bank.balance - start == 100 + int(pays[number]),
-			"the field on a %d should return $%d, returned $%d" % [
-				number, 100 + int(pays[number]), Bank.balance - start])
+		check(Bank.balance - start == int(pays[number]),
+			"the field on a %d should pay $%d and stay up, paid $%d" % [
+				number, int(pays[number]), Bank.balance - start])
+		check(t.board.amount("field") == 100, "a winning field bet stays up")
 	for number in [5, 6, 7, 8]:
 		_reset()
 		_stake("field", 100)
@@ -450,8 +472,9 @@ func _test_hardways() -> void:
 		_stake("hard_%d" % number, 10)
 		var start: int = Bank.balance
 		await _roll(number / 2, number / 2)
-		check(Bank.balance - start == 10 + 10 * int(pays[number]),
+		check(Bank.balance - start == 10 * int(pays[number]),
 			"hard %d should pay %d:1, got %+d" % [number, int(pays[number]), Bank.balance - start])
+		check(t.board.amount("hard_%d" % number) == 10, "a winning hardway stays up")
 
 		# The same number rolled easy kills it.
 		_reset()
@@ -487,8 +510,9 @@ func _test_props() -> void:
 		_stake(String(c.key), 10)
 		var start: int = Bank.balance
 		await _roll(int(c.win[0]), int(c.win[1]))
-		check(Bank.balance - start == 10 + 10 * int(c.pays),
+		check(Bank.balance - start == 10 * int(c.pays),
 			"%s should pay %d:1, got %+d" % [c.key, int(c.pays), Bank.balance - start])
+		check(t.board.amount(String(c.key)) == 10, "%s stays up after a win" % c.key)
 
 		_reset()
 		t.point = 5
@@ -497,56 +521,60 @@ func _test_props() -> void:
 		await _roll(int(c.lose[0]), int(c.lose[1]))
 		check(Bank.balance - start == 0, "%s should lose on that roll" % c.key)
 
-	# The horn is quartered: one quarter wins at its own price and the other
-	# three are lost. These measure the net over the whole bet, so `start` is
-	# taken before the chips go down rather than after.
+	# The horn is quartered: the winning quarter pays its own price, the
+	# three losing quarters are bought back out of the winnings, and the
+	# whole horn stays working.
 	_reset()
 	t.point = 5
-	var start := Bank.balance
 	_stake("horn", 40)
+	var start := Bank.balance
 	await _roll(1, 1)
 	check(Bank.balance - start == 270,
-		"a $40 horn on the 2 pays its $10 quarter at 30:1, netting +$270, got %+d" % (Bank.balance - start))
+		"a $40 horn on the 2 pays $270 net of its lost quarters, got %+d" % (Bank.balance - start))
+	check(t.board.amount("horn") == 40, "the paid horn stays up whole")
 
 	_reset()
 	t.point = 5
-	start = Bank.balance
 	_stake("horn", 40)
+	start = Bank.balance
 	await _roll(5, 6)
 	check(Bank.balance - start == 120,
-		"a $40 horn on the 11 pays its $10 quarter at 15:1, netting +$120, got %+d" % (Bank.balance - start))
+		"a $40 horn on the 11 pays $120 net of its lost quarters, got %+d" % (Bank.balance - start))
 
 	_reset()
 	t.point = 5
-	start = Bank.balance
 	_stake("horn", 40)
+	start = Bank.balance
 	await _roll(2, 2)
-	check(Bank.balance - start == -40, "the horn loses everything on a 4")
+	check(Bank.balance - start == 0 and t.board.amount("horn") == 0,
+		"the horn loses everything on a 4")
 
-	# C & E is halved between any craps and the yo.
+	# C & E is halved between any craps and the yo, and stays up the same way.
 	_reset()
 	t.point = 5
-	start = Bank.balance
 	_stake("c_and_e", 20)
+	start = Bank.balance
 	await _roll(1, 2)
 	check(Bank.balance - start == 60,
-		"a $20 C & E on a 3 pays its $10 half at 7:1, netting +$60, got %+d" % (Bank.balance - start))
+		"a $20 C & E on a 3 pays $60 net of its lost half, got %+d" % (Bank.balance - start))
+	check(t.board.amount("c_and_e") == 20, "the paid C & E stays up whole")
 
 	_reset()
 	t.point = 5
-	start = Bank.balance
 	_stake("c_and_e", 20)
+	start = Bank.balance
 	await _roll(5, 6)
 	check(Bank.balance - start == 140,
-		"a $20 C & E on the yo pays its $10 half at 15:1, netting +$140, got %+d" % (Bank.balance - start))
+		"a $20 C & E on the yo pays $140 net of its lost half, got %+d" % (Bank.balance - start))
 
 	_reset()
 	t.point = 5
-	start = Bank.balance
 	_stake("c_and_e", 20)
+	start = Bank.balance
 	await _roll(2, 2)
-	check(Bank.balance - start == -20, "C & E loses on a 4")
-	note("props pay their published odds; the horn quarters and C & E halves")
+	check(Bank.balance - start == 0 and t.board.amount("c_and_e") == 0,
+		"C & E loses on a 4")
+	note("props pay their published odds, stay up, and the horn quarters")
 
 
 func _test_big_six_and_eight() -> void:
@@ -579,7 +607,7 @@ func _test_come_out_sleeps_place_and_odds() -> void:
 	await _roll(3, 4)
 	check(t.board.amount("place_6") == 60 and t.board.amount("place_8") == 60,
 		"place bets should survive a come-out seven")
-	check(Bank.balance - start == 200, "only the pass line should be paid on a come-out seven")
+	check(Bank.balance - start == 100, "only the pass line should be paid on a come-out seven")
 
 	# And they don't pay on the come-out either.
 	_reset()
@@ -599,10 +627,77 @@ func _test_come_out_sleeps_place_and_odds() -> void:
 	_stake("pass", 50)
 	start = Bank.balance
 	await _roll(3, 4)
-	check(Bank.balance - start == 100 + 100,
+	check(Bank.balance - start == 100 + 50,
 		"a come-out seven should return the sleeping odds and pay the line, got %+d" % (Bank.balance - start))
 	check(t.board.amount("come_9") == 0, "the flat come bet still loses to a come-out seven")
 	note("place bets and come odds sleep through the come-out")
+
+
+func _test_clear_bets() -> void:
+	# During the come-out everything on the table is the player's to take —
+	# the pass line only becomes a contract once a point is established.
+	_reset()
+	_stake("pass", 100)
+	_stake("field", 50)
+	var start: int = Bank.balance
+	t._on_clear_pressed()
+	check(Bank.balance - start == 150, "on a come-out, clearing refunds everything")
+	check(t.board.total() == 0, "the board should be empty after a come-out clear")
+
+	# With a point on, the pass flat and travelled come bets ride; odds,
+	# place bets, hardways and the whole don't side come down freely.
+	_reset()
+	_stake("pass", 100)
+	await _roll(3, 3)          # point 6
+	_stake("pass_odds", 100)
+	_stake("place_5", 50)
+	_stake("hard_8", 10)
+	_stake("come", 25)
+	await _roll(4, 5)          # the come bet travels to the 9
+	_stake("come_odds_9", 50)
+	_stake("dont_come", 30)
+	await _roll(5, 5)          # the don't come bet travels to the 10
+	start = Bank.balance
+	t._on_clear_pressed()
+	check(Bank.balance - start == 100 + 50 + 10 + 50 + 30,
+		"clearing should refund odds, place, hardway and the don't side, got %+d" % (Bank.balance - start))
+	check(t.board.amount("pass") == 100, "the pass flat is a contract and stays")
+	check(t.board.amount("come_9") == 25, "a travelled come bet is a contract and stays")
+	check(t.board.amount("pass_odds") == 0, "odds come down freely")
+	check(t.board.amount("come_odds_9") == 0, "come odds come down freely")
+	check(t.board.amount("dont_come_10") == 0, "the don't side comes down freely")
+	t.board.refund_all()
+	t.point = 0
+	note("clear refunds everything but the pass line and travelled come bets")
+
+
+func _test_walking_away() -> void:
+	# Leaving the table hands back every removable bet, but the contracts
+	# can't come down and the table doesn't wait — they are forfeited.
+	_reset()
+	_stake("pass", 100)
+	await _roll(3, 3)          # point 6
+	_stake("pass_odds", 200)
+	_stake("place_8", 60)
+	_stake("come", 25)
+	await _roll(4, 5)          # the come bet travels to the 9
+	var start: int = Bank.balance
+	var forfeited: int = t._settle_walk_away()
+	check(forfeited == 100 + 25,
+		"walking away should forfeit the pass flat and the come 9, forfeited $%d" % forfeited)
+	check(Bank.balance - start == 200 + 60,
+		"walking away should refund the odds and the place bet, got %+d" % (Bank.balance - start))
+	check(t.board.total() == 0, "nothing stays on the table once the player has left")
+
+	# On a come-out there are no contracts yet, so leaving costs nothing.
+	_reset()
+	_stake("pass", 100)
+	_stake("field", 50)
+	start = Bank.balance
+	forfeited = t._settle_walk_away()
+	check(forfeited == 0 and Bank.balance - start == 150,
+		"leaving during the come-out refunds everything")
+	note("walking away refunds removable bets and forfeits the contracts")
 
 
 func _test_money_conservation() -> void:
