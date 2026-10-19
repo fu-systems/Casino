@@ -9,3 +9,6 @@ dist/
 export.cfg
 export_credentials.cfg
 *.tmp
+
+# The Android Gradle build template, installed at export time
+android/

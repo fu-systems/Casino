@@ -5,6 +5,7 @@ extends Node
 ##   godot --headless --path . tests/run_all.tscn
 
 const SUITES := [
+	"res://tests/save_rules.gd",
 	"res://tests/layout_fits.gd",
 	"res://tests/blackjack_rules.gd",
 	"res://tests/roulette_rules.gd",
@@ -14,6 +15,11 @@ const SUITES := [
 
 
 func _ready() -> void:
+	# Never read a developer's real save, never write over it, and start every
+	# run from the same fresh bankroll whatever was saved last time.
+	SaveData.use_memory_only()
+	Bank.reset()
+
 	# Animations are driven by real timers; run them fast so the suite doesn't
 	# take minutes.
 	Engine.time_scale = 60.0

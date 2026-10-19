@@ -202,6 +202,140 @@ jobs:
           path: build/casino-android/
           if-no-files-found: error
 
+  # The Play Store build: a release-signed Android App Bundle with Google Play
+  # Billing, made only for version tags (or by hand), since it needs the upload
+  # keystore from repo secrets. The everyday debug APK above stays a plain,
+  # non-Gradle export so ordinary pushes never depend on any of this.
+  export-play:
+    name: Export Android (Play)
+    runs-on: ubuntu-latest
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    env:
+      # Pinned to the release built against this project's Godot version.
+      BILLING_PLUGIN_VERSION: "3.3.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Check the upload keystore is configured
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          missing=""
+          [ -n "$ANDROID_KEYSTORE_BASE64" ] || missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$ANDROID_KEY_ALIAS" ] || missing="$missing ANDROID_KEY_ALIAS"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repo secrets:$missing (see docs/PLAY_RELEASE.md)"
+            exit 1
+          fi
+
+      - name: Make sure the Android SDK has the Gradle build's platform
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          yes | "$sdkmanager" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          ls "$ANDROID_SDK_ROOT"/platforms/ "$ANDROID_SDK_ROOT"/build-tools/
+
+      - name: Fetch the Google Play Billing plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/billing addons
+          gh release download "$BILLING_PLUGIN_VERSION" \
+            --repo godot-sdk-integrations/godot-google-play-billing \
+            --pattern '*.zip' --dir /tmp/billing
+          unzip -q -o /tmp/billing/*.zip -d /tmp/billing/unpacked
+          # The zip's top-level layout has varied between releases, so find
+          # the plugin by its manifest rather than assuming a path.
+          cfg="$(find /tmp/billing/unpacked -path '*GodotGooglePlayBilling/plugin.cfg' | head -n1)"
+          if [ -z "$cfg" ]; then
+            echo "::error::No GodotGooglePlayBilling/plugin.cfg in the $BILLING_PLUGIN_VERSION release"
+            find /tmp/billing/unpacked | head -50
+            exit 1
+          fi
+          rm -rf addons/GodotGooglePlayBilling
+          cp -r "$(dirname "$cfg")" addons/GodotGooglePlayBilling
+          ls -R addons/GodotGooglePlayBilling
+          # Enabled only for this build; the committed project leaves it off so
+          # desktop exports and the debug APK never try to load it.
+          printf '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/GodotGooglePlayBilling/plugin.cfg")\n' >> project.godot
+
+      - name: Point Godot at the Android SDK
+        env:
+          GODOT_VERSION: ${{ env.GODOT_VERSION }}
+        run: |
+          set -euo pipefail
+          godot --headless --editor --quit --path . >/dev/null 2>&1 || true
+          settings="$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres"
+          sed -i -e '/^export\/android\/android_sdk_path/d' \
+                 -e '/^export\/android\/java_sdk_path/d' "$settings"
+          printf 'export/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+            "$ANDROID_SDK_ROOT" "$JAVA_HOME" >> "$settings"
+
+      - name: Stamp the version
+        run: |
+          set -euo pipefail
+          # Play rejects a reused version code, so the run number supplies a
+          # fresh one; the name comes from the tag when there is one.
+          name="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) name="0.0.${GITHUB_RUN_NUMBER}" ;; esac
+          sed -i -e "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" \
+                 -e "s/^version\/name=.*/version\/name=\"${name}\"/" export_presets.cfg
+          sed -i -e "s/^config\/version=.*/config\/version=\"${name}\"/" project.godot
+          grep -E '^version/' export_presets.cfg
+
+      - name: Export the signed App Bundle
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/upload.keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$keystore"
+
+          out="$PWD/build/casino-android-play"
+          mkdir -p "$out"
+          godot --headless --import --path . >/dev/null 2>&1 || true
+          godot --headless --path . --install-android-build-template \
+            --export-release "Android Play" "$out/Casino.aab" >/tmp/export.log 2>&1 || true
+          rm -f "$keystore"
+          tail -n 40 /tmp/export.log
+
+          if [ ! -s "$out/Casino.aab" ]; then
+            echo "::error::Play export produced no App Bundle"
+            cat /tmp/export.log
+            exit 1
+          fi
+          unzip -l "$out/Casino.aab" | grep -q 'base/manifest/AndroidManifest.xml' \
+            || { echo "::error::The bundle has no base/manifest/AndroidManifest.xml"; exit 1; }
+          ls -lh "$out"
+
+      - name: Fail on export errors
+        run: .github/scripts/assert-no-godot-errors.sh /tmp/export.log "exporting the Play bundle"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: casino-android-play
+          path: build/casino-android-play/
+          if-no-files-found: error
+
   release:
     name: Publish release
     runs-on: ubuntu-latest
