@@ -5,6 +5,11 @@ extends Control
 ## so the whole game is that tableau plus what you backed before the deal.
 ## Banker pays even money less 5% commission, tie pays 8:1, and the pair side
 ## bets pay 11:1.
+##
+## Coin Flip mode (a free unlock in Extras) shows the same game for what it
+## is: the cards are still dealt and settled by the tableau below, but all the
+## table shows is a coin — heads for the banker, tails for the player, on its
+## edge for a tie.
 
 const CHIP_VALUES := [5, 25, 100, 500]
 const CARD_SIZE := Vector2(84, 118)
@@ -29,6 +34,11 @@ const COLOR_PLAYER := Color(0.16, 0.34, 0.6)
 const COLOR_BANKER := Color(0.6, 0.16, 0.18)
 const COLOR_TIE := Color(0.15, 0.45, 0.25)
 
+const COIN_FLIP_ID := "baccarat_coin_flip"
+## What the coin stands for, worked out over an eight-deck shoe.
+const COIN_CAPTION := "Baccarat has no decisions. Every hand is a weighted coin flip: Banker 45.9%, Player 44.6%, Tie 9.5%."
+const COIN_FACES := {"banker": "heads", "player": "tails", "tie": "edge"}
+
 enum Phase { BETTING, DEALING, ROUND_OVER }
 
 var shoe: Array = []
@@ -43,6 +53,7 @@ var board := BetBoard.new()
 var history: Array = []
 ## Set by tests to force a known deal; consumed before the shoe.
 var scripted_cards: Array = []
+var coin_mode := false
 
 var balance_label: Label
 var message_label: Label
@@ -57,6 +68,11 @@ var back_button: Button
 var deal_button: Button
 var clear_button: Button
 var new_round_button: Button
+var hands_row: HBoxContainer
+var pair_row: HBoxContainer
+var coin_panel: VBoxContainer
+var coin: Coin
+var coin_button: Button
 
 
 func _ready() -> void:
@@ -67,6 +83,7 @@ func _ready() -> void:
 	_on_balance_changed(Bank.balance)
 	_refresh_table()
 	_set_message("Back the player, the banker, or a tie.", Color.WHITE)
+	_set_coin_mode(Store.owns(COIN_FLIP_ID) and bool(SaveData.get_value("baccarat", "coin_flip", false)))
 	_update_controls()
 
 
@@ -167,8 +184,7 @@ func _on_deal_pressed() -> void:
 	for i in 2:
 		player_cards.append(_draw_card())
 		banker_cards.append(_draw_card())
-		_refresh_table()
-		await _pause()
+		await _show_card()
 
 	var player_total := hand_total(player_cards)
 	var banker_total := hand_total(banker_cards)
@@ -179,18 +195,36 @@ func _on_deal_pressed() -> void:
 		if player_total <= 5:
 			player_cards.append(_draw_card())
 			player_third = card_value(player_cards[2].rank)
-			_refresh_table()
-			await _pause()
+			await _show_card()
 		if banker_draws(banker_total, player_third):
 			banker_cards.append(_draw_card())
-			_refresh_table()
-			await _pause()
+			await _show_card()
 
+	if coin_mode:
+		await coin.flip(COIN_FACES[_outcome()])
 	_settle()
 
 
 func _pause() -> void:
 	await get_tree().create_timer(0.4).timeout
+
+
+## Lays the latest card on the table. In coin mode the cards stay out of
+## sight, so there's nothing to wait for until the coin lands.
+func _show_card() -> void:
+	_refresh_table()
+	if not coin_mode:
+		await _pause()
+
+
+func _outcome() -> String:
+	var player_total := hand_total(player_cards)
+	var banker_total := hand_total(banker_cards)
+	if player_total > banker_total:
+		return "player"
+	if banker_total > player_total:
+		return "banker"
+	return "tie"
 
 
 ## Pays every backed bet and clears the board.
@@ -202,11 +236,7 @@ func _settle() -> void:
 	var returned := 0
 	var commission := 0
 
-	var outcome := "tie"
-	if player_total > banker_total:
-		outcome = "player"
-	elif banker_total > player_total:
-		outcome = "banker"
+	var outcome := _outcome()
 
 	# Player and banker bets push on a tie rather than losing.
 	if outcome == "player":
@@ -238,6 +268,9 @@ func _settle() -> void:
 		headline = "Player %d beats %d" % [player_total, banker_total]
 	elif outcome == "banker":
 		headline = "Banker %d beats %d" % [banker_total, player_total]
+	if coin_mode:
+		headline = {"banker": "Heads — Banker wins", "player": "Tails — Player wins",
+			"tie": "On its edge — a Tie"}[outcome]
 	var tail := " — you break even."
 	var colour := COLOR_GOLD
 	if net > 0:
@@ -258,6 +291,7 @@ func _on_new_round_pressed() -> void:
 	phase = Phase.BETTING
 	player_cards.clear()
 	banker_cards.clear()
+	coin.face = ""
 	_refresh_table()
 	if Bank.balance <= 0:
 		_set_message("Out of chips! Reset your balance from the menu.", COLOR_LOSE)
@@ -337,18 +371,36 @@ func _build_ui() -> void:
 	top.add_child(balance_label)
 
 	# The two hands, side by side.
-	var hands := HBoxContainer.new()
-	hands.add_theme_constant_override("separation", 40)
-	hands.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_child(hands)
+	hands_row = HBoxContainer.new()
+	hands_row.add_theme_constant_override("separation", 40)
+	hands_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_child(hands_row)
 	var player_side := _build_hand_side("PLAYER", COLOR_PLAYER)
-	hands.add_child(player_side)
+	hands_row.add_child(player_side)
 	var banker_side := _build_hand_side("BANKER", COLOR_BANKER)
-	hands.add_child(banker_side)
+	hands_row.add_child(banker_side)
 	player_box = player_side.get_meta("cards")
 	player_score = player_side.get_meta("score")
 	banker_box = banker_side.get_meta("cards")
 	banker_score = banker_side.get_meta("score")
+
+	# Coin Flip mode swaps the two hands for one coin, in the same space.
+	coin_panel = VBoxContainer.new()
+	coin_panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	coin_panel.add_theme_constant_override("separation", 6)
+	coin_panel.custom_minimum_size = Vector2(0, hands_row.get_combined_minimum_size().y)
+	coin_panel.visible = false
+	column.add_child(coin_panel)
+	var coin_holder := CenterContainer.new()
+	coin_panel.add_child(coin_holder)
+	coin = Coin.new()
+	coin_holder.add_child(coin)
+	var caption := Label.new()
+	caption.text = COIN_CAPTION
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.add_theme_font_size_override("font_size", 16)
+	caption.add_theme_color_override("font_color", COLOR_MUTED)
+	coin_panel.add_child(caption)
 
 	message_label = Label.new()
 	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -367,7 +419,7 @@ func _build_ui() -> void:
 	_add_bet_area(bet_row, "banker", "BANKER\n1 : 1 less %d%%" % int(COMMISSION * 100),
 		COLOR_BANKER, Vector2(190, 78))
 
-	var pair_row := HBoxContainer.new()
+	pair_row = HBoxContainer.new()
 	pair_row.add_theme_constant_override("separation", 12)
 	pair_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(pair_row)
@@ -437,6 +489,7 @@ func _build_ui() -> void:
 	deal_button = _make_action(action_row, "Deal", Color(0.72, 0.55, 0.1), _on_deal_pressed)
 	clear_button = _make_action(action_row, "Clear Bets", Color(0.35, 0.3, 0.25), _on_clear_pressed)
 	new_round_button = _make_action(action_row, "New Round", Color(0.72, 0.55, 0.1), _on_new_round_pressed)
+	coin_button = _make_action(action_row, "Coin Flip", Color(0.45, 0.36, 0.1), _on_coin_pressed)
 
 
 func _build_hand_side(title: String, accent: Color) -> Control:
@@ -573,6 +626,35 @@ func _update_controls() -> void:
 	clear_button.visible = betting
 	new_round_button.visible = phase == Phase.ROUND_OVER
 	back_button.disabled = phase == Phase.DEALING
+	# Only once unlocked, and only between hands.
+	coin_button.visible = Store.owns(COIN_FLIP_ID)
+	coin_button.disabled = not betting
+	coin_button.text = "Show Cards" if coin_mode else "Coin Flip"
+
+
+# --- coin flip -----------------------------------------------------------------
+
+func _on_coin_pressed() -> void:
+	if phase != Phase.BETTING:
+		return
+	_set_coin_mode(not coin_mode)
+	_update_controls()
+
+
+## Swaps the cards for the coin or back. The pair bets need cards to mean
+## anything, so they leave the table with them and any chips on them come
+## back.
+func _set_coin_mode(on: bool) -> void:
+	coin_mode = on
+	if on:
+		for key in ["player_pair", "banker_pair"]:
+			board.refund(key)
+		_update_totals()
+	hands_row.visible = not on
+	coin_panel.visible = on
+	pair_row.visible = not on
+	coin.face = ""
+	SaveData.set_value("baccarat", "coin_flip", on)
 
 
 func _set_message(text: String, colour: Color) -> void:

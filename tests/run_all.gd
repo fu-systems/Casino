@@ -11,6 +11,8 @@ const SUITES := [
 	"res://tests/roulette_rules.gd",
 	"res://tests/craps_rules.gd",
 	"res://tests/baccarat_rules.gd",
+	"res://tests/store_rules.gd",
+	"res://tests/baccarat_coin_rules.gd",
 ]
 
 
@@ -19,6 +21,7 @@ func _ready() -> void:
 	# run from the same fresh bankroll whatever was saved last time.
 	SaveData.use_memory_only()
 	Bank.reset()
+	Store.use_test_backend()
 
 	# Animations are driven by real timers; run them fast so the suite doesn't
 	# take minutes.

@@ -96,6 +96,7 @@ func _build_ui() -> void:
 	utility_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	utility_row.add_theme_constant_override("separation", 15)
 	vbox.add_child(utility_row)
+	_add_menu_button(utility_row, "Extras", Color(0.4, 0.3, 0.1), _on_extras_pressed, SMALL_SIZE)
 	_add_menu_button(utility_row, "About", Color(0.18, 0.24, 0.3), _on_about_pressed, SMALL_SIZE)
 	_add_menu_button(utility_row, "Quit", Color(0.25, 0.22, 0.2), _on_quit_pressed, SMALL_SIZE)
 
@@ -137,6 +138,10 @@ func _on_craps_pressed() -> void:
 
 func _on_baccarat_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/baccarat.tscn")
+
+
+func _on_extras_pressed() -> void:
+	Store.show_extras(get_tree())
 
 
 func _on_reset_pressed() -> void:
