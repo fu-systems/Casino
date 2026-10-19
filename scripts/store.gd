@@ -28,8 +28,23 @@ signal tip_thanked(id: String)
 enum Backend { UNLOCKED, PLAY, TEST }
 
 ## Paid packs, in the order the Extras screen lists them. `scene` is where
-## the pack's Open button goes once it's owned.
-const PACKS := []
+## the pack's Open button goes once it's owned; `price` is only the fallback
+## shown by the test store, as Google Play supplies the real, local one.
+const PACKS := [
+	{
+		"id": "strategy_trainer",
+		"title": "Strategy Trainer",
+		"game": "Blackjack",
+		"price": "$2.99",
+		"lines": [
+			"Drills every basic-strategy decision: hard totals, soft totals and pairs against every upcard.",
+			"Count mode drills the Illustrious 18 and insurance at counts either side of where they flip.",
+			"Weak Spots replays the hands you miss most; Blitz gives you 60 seconds against the clock.",
+			"Every wrong answer explains the right play and shows it on the chart.",
+		],
+		"scene": "res://scenes/strategy_drill.tscn",
+	},
+]
 
 const TIPS := [
 	{"id": "tip_small", "title": "Small tip", "price": "$1.99"},

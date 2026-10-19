@@ -15,14 +15,18 @@ const SCENES := [
 	"res://scenes/craps.tscn",
 	"res://scenes/baccarat.tscn",
 	"res://scenes/extras.tscn",
+	"res://scenes/strategy_drill.tscn",
 ]
 
 
 func run() -> void:
+	# Measure the packs' real screens, not the locked cover over them.
+	Store.backend = Store.Backend.UNLOCKED
 	for path in SCENES:
 		if not ResourceLoader.exists(path):
 			continue
 		await _check_scene(path)
+	Store.use_test_backend()
 
 
 func _check_scene(path: String) -> void:

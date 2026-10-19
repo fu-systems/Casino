@@ -181,7 +181,7 @@ static func _pair_reason(pair_value: int, up: int) -> String:
 		8:
 			return "Always split 8s — 16 is the worst total in the game, and two hands from 8 are far better."
 		7:
-			return "Split 7s against a weak %s; 14 is a losing total." % _prose(up)
+			return "Split 7s against a weak %s; 14 is a losing total." % _card_name(up)
 		6:
 			return "Split 6s against a bust card; 12 is too weak to play as one hand."
 		4:
@@ -234,24 +234,24 @@ static func _basic_hard(total: int, up: int, can_double: bool) -> Dictionary:
 		return _act("Stand", "Hard %d stands: any card above a 4 busts it, and it already beats a dealer bust." % total)
 	if total >= 13:
 		if up <= 6:
-			return _act("Stand", "Dealer's %s is a bust card, so stand on %d and let them draw into it." % [_prose(up), total])
-		return _act("Hit", "Dealer's %s will usually finish 17 or better, so a stiff %d has to improve." % [_prose(up), total])
+			return _act("Stand", "Dealer's %s is a bust card, so stand on %d and let them draw into it." % [_card_name(up), total])
+		return _act("Hit", "Dealer's %s will usually finish 17 or better, so a stiff %d has to improve." % [_card_name(up), total])
 	if total == 12:
 		if up >= 4 and up <= 6:
-			return _act("Stand", "Dealer's %s busts often enough to beat the 31%% chance a 10 breaks your 12." % _prose(up))
-		return _act("Hit", "Only a 10 busts a 12, and dealer's %s is too strong to stand against." % _prose(up))
+			return _act("Stand", "Dealer's %s busts often enough to beat the 31%% chance a 10 breaks your 12." % _card_name(up))
+		return _act("Hit", "Only a 10 busts a 12, and dealer's %s is too strong to stand against." % _card_name(up))
 	if total == 11:
 		if up <= 10:
 			return _double_or("Hit", can_double, "11 is the strongest doubling total — one card reaches 20 or 21 more often than not.")
 		return _act("Hit", "Basic strategy hits 11 against an ace: the dealer makes 21 too often to risk a doubled bet.")
 	if total == 10:
 		if up <= 9:
-			return _double_or("Hit", can_double, "10 draws to 20 while dealer's %s is behind, so double the bet." % _prose(up))
-		return _act("Hit", "Dealer's %s reaches 20 as easily as you do, so take one card without doubling." % _prose(up))
+			return _double_or("Hit", can_double, "10 draws to 20 while dealer's %s is behind, so double the bet." % _card_name(up))
+		return _act("Hit", "Dealer's %s reaches 20 as easily as you do, so take one card without doubling." % _card_name(up))
 	if total == 9:
 		if up >= 3 and up <= 6:
-			return _double_or("Hit", can_double, "9 against a weak %s is a small but real doubling edge." % _prose(up))
-		return _act("Hit", "9 needs improving, and dealer's %s isn't weak enough to double into." % _prose(up))
+			return _double_or("Hit", can_double, "9 against a weak %s is a small but real doubling edge." % _card_name(up))
+		return _act("Hit", "9 needs improving, and dealer's %s isn't weak enough to double into." % _card_name(up))
 	return _act("Hit", "Hard %d can't bust, so always take another card." % total)
 
 
@@ -260,10 +260,10 @@ static func _basic_soft(total: int, up: int, can_double: bool) -> Dictionary:
 		return _act("Stand", "Soft %d already beats the dealer's average hand — don't touch it." % total)
 	if total == 18:
 		if up >= 3 and up <= 6:
-			return _double_or("Stand", can_double, "Soft 18 doubles against a weak %s: the ace means one card can't bust you." % _prose(up))
+			return _double_or("Stand", can_double, "Soft 18 doubles against a weak %s: the ace means one card can't bust you." % _card_name(up))
 		if up == 2 or up == 7 or up == 8:
 			return _act("Stand", "Soft 18 stands against %s — it ties or beats the dealer's likely total." % _prose(up))
-		return _act("Hit", "Soft 18 loses to a %s more often than it wins, and the ace makes hitting free." % _prose(up))
+		return _act("Hit", "Soft 18 loses to %s more often than it wins, and the ace makes hitting free." % _with_article(up))
 	if total == 17:
 		if up >= 3 and up <= 6:
 			return _double_or("Hit", can_double, "Soft 17 doubles against 3-6: you can't bust and the dealer is weak.")
@@ -271,7 +271,7 @@ static func _basic_soft(total: int, up: int, can_double: bool) -> Dictionary:
 	if total >= 15:
 		if up >= 4 and up <= 6:
 			return _double_or("Hit", can_double, "Soft %d doubles against 4-6, the dealer's weakest upcards." % total)
-		return _act("Hit", "Soft %d is free to improve, and dealer's %s isn't weak enough to double." % [total, _prose(up)])
+		return _act("Hit", "Soft %d is free to improve, and dealer's %s isn't weak enough to double." % [total, _card_name(up)])
 	if total >= 13:
 		if up == 5 or up == 6:
 			return _double_or("Hit", can_double, "Soft %d doubles against 5 and 6 only — the dealer's two worst cards." % total)
@@ -291,6 +291,18 @@ static func _act(action: String, reason: String) -> Dictionary:
 
 static func _prose(up: int) -> String:
 	return "an ace" if up == 11 else str(up)
+
+
+## The upcard as a bare noun, for "dealer's ace" and "a weak 5".
+static func _card_name(up: int) -> String:
+	return "ace" if up == 11 else str(up)
+
+
+## The upcard with its article: "an ace", "an 8", "a 9".
+static func _with_article(up: int) -> String:
+	if up == 11:
+		return "an ace"
+	return "an %d" % up if up == 8 else "a %d" % up
 
 
 static func _hand_label(shape: Dictionary) -> String:

@@ -9,21 +9,18 @@ extends Control
 ## penetration.
 
 const CHIP_VALUES := [5, 25, 100, 500]
-const CARD_SIZE := Vector2(96, 134)
-const SUITS := ["♠", "♥", "♦", "♣"]
-const RANKS := {
-	"A": 11, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-	"8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10,
-}
+const CARD_SIZE := CardView.BASE_SIZE
 
 const MIN_DECKS := 1
 const MAX_DECKS := 8
 const DEFAULT_DECKS := 6
-## Fraction of the shoe still undealt when the dealer reshuffles.
-const RESHUFFLE_AT := 0.25
 ## Most hands one round can be split into.
 const MAX_HANDS := 4
 const TRAINER_WIDTH := 348
+## The paid blackjack packs, opened from the bottom of the trainer panel.
+const DRILLS := [
+	{"id": "strategy_trainer", "title": "Strategy Trainer", "scene": "res://scenes/strategy_drill.tscn"},
+]
 
 const COLOR_FELT := Color(0.05, 0.32, 0.15)
 const COLOR_GOLD := Color(0.94, 0.78, 0.29)
@@ -33,9 +30,24 @@ const COLOR_MUTED := Color(0.82, 0.88, 0.82)
 
 enum Phase { BETTING, INSURANCE, PLAYER_TURN, DEALER_TURN, ROUND_OVER }
 
-var shoe: Array = []
-var shoe_start_size := 0
-var deck_count := DEFAULT_DECKS
+## The shoe and its Hi-Lo count live in a `BlackjackShoe` shared with the
+## trainers; these forward to it so the table keeps its own names for them.
+var shoe_model := BlackjackShoe.new(DEFAULT_DECKS)
+var shoe: Array:
+	get:
+		return shoe_model.cards
+	set(value):
+		shoe_model.cards = value
+var shoe_start_size: int:
+	get:
+		return shoe_model.start_size
+	set(value):
+		shoe_model.start_size = value
+var deck_count: int:
+	get:
+		return shoe_model.decks
+	set(value):
+		shoe_model.decks = value
 var shoe_note := ""
 
 ## One entry per hand in play: {cards, bet, done, split_aces}. A round starts
@@ -54,7 +66,11 @@ var hole_hidden := true
 
 ## Hi-Lo running count over every card the player has actually seen. The
 ## hole card is excluded until it is turned over.
-var running_count := 0
+var running_count: int:
+	get:
+		return shoe_model.running_count
+	set(value):
+		shoe_model.running_count = value
 var hole_counted := false
 
 var show_count := false
@@ -93,6 +109,7 @@ var basic_toggle: Button
 var basic_label: Label
 var deviation_toggle: Button
 var deviation_label: Label
+var drill_buttons := {}
 
 
 func _ready() -> void:
@@ -354,7 +371,7 @@ func _build_trainer_panel() -> Control:
 	column.add_child(clear_count_button)
 
 	# --- Strategy ---
-	_add_section_header(column, "STRATEGY TRAINER")
+	_add_section_header(column, "STRATEGY HINTS")
 
 	basic_toggle = Button.new()
 	basic_toggle.focus_mode = Control.FOCUS_NONE
@@ -371,6 +388,26 @@ func _build_trainer_panel() -> Control:
 	column.add_child(deviation_toggle)
 
 	deviation_label = _make_advice_label(column)
+
+	# --- Charts and drills ---
+	_add_section_header(column, "CHARTS & DRILLS")
+
+	var charts_button := Button.new()
+	charts_button.text = "Strategy Charts"
+	charts_button.focus_mode = Control.FOCUS_NONE
+	CasinoUI.style_button(charts_button, Color(0.2, 0.3, 0.55), 17, 10, 7)
+	charts_button.pressed.connect(_on_charts_pressed)
+	column.add_child(charts_button)
+
+	for drill in DRILLS:
+		var button := Button.new()
+		button.focus_mode = Control.FOCUS_NONE
+		CasinoUI.style_button(button, Color(0.4, 0.3, 0.1), 17, 10, 7)
+		button.pressed.connect(_on_drill_pressed.bind(drill))
+		column.add_child(button)
+		drill_buttons[drill.id] = button
+	_update_drill_buttons()
+	Store.purchases_changed.connect(_update_drill_buttons)
 
 	return panel
 
@@ -426,20 +463,13 @@ func _chip_color(value: int) -> Color:
 ## Builds a fresh shuffled shoe and resets the count, exactly as a real
 ## reshuffle does.
 func _reshuffle_shoe() -> void:
-	shoe.clear()
-	for _d in deck_count:
-		for suit in SUITS:
-			for rank in RANKS:
-				shoe.append({"rank": rank, "suit": suit, "value": RANKS[rank]})
-	shoe.shuffle()
-	shoe_start_size = shoe.size()
-	running_count = 0
+	shoe_model.reshuffle()
 	hole_counted = false
 	shoe_note = "Freshly shuffled — count reset to 0."
 
 
 func _reshuffle_threshold() -> int:
-	return int(shoe_start_size * RESHUFFLE_AT)
+	return shoe_model.threshold()
 
 
 ## Reshuffles between rounds once the shoe is down to its last quarter.
@@ -456,27 +486,23 @@ func _draw_card(count_it: bool = true) -> Dictionary:
 		# Only reachable if a single round outruns the whole remaining shoe.
 		_reshuffle_shoe()
 		shoe_note = "Shoe ran out mid-hand — reshuffled, count reset."
-	var card: Dictionary = shoe.pop_back()
-	if count_it:
-		running_count += BlackjackStrategy.hi_lo(card)
-	return card
+	return shoe_model.draw(count_it)
 
 
 ## Turns the hole card up, counting it at the moment it becomes visible.
 func _reveal_hole() -> void:
 	if not hole_counted and dealer_hand.size() >= 2:
-		running_count += BlackjackStrategy.hi_lo(dealer_hand[1])
+		shoe_model.count(dealer_hand[1])
 		hole_counted = true
 	hole_hidden = false
 
 
 func _decks_left() -> float:
-	return shoe.size() / 52.0
+	return shoe_model.decks_left()
 
 
 func _true_count() -> float:
-	# Guarded so a nearly empty shoe can't divide the count by zero.
-	return running_count / maxf(_decks_left(), 0.25)
+	return shoe_model.true_count()
 
 
 # --- Cards -------------------------------------------------------------------
@@ -503,50 +529,7 @@ func _card_size() -> Vector2:
 
 
 func _make_card_node(card: Dictionary, face_down: bool, size: Vector2) -> Control:
-	var panel := Panel.new()
-	panel.custom_minimum_size = size
-	var scale := size.y / CARD_SIZE.y
-	var sb := StyleBoxFlat.new()
-	sb.set_corner_radius_all(int(10 * scale))
-
-	if face_down:
-		sb.bg_color = Color(0.13, 0.2, 0.45)
-		sb.border_color = Color(0.72, 0.76, 0.94)
-		sb.set_border_width_all(maxi(2, int(4 * scale)))
-		panel.add_theme_stylebox_override("panel", sb)
-		var back := Label.new()
-		back.text = "❖"
-		back.set_anchors_preset(Control.PRESET_FULL_RECT)
-		back.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		back.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		back.add_theme_font_size_override("font_size", int(40 * scale))
-		back.add_theme_color_override("font_color", Color(0.72, 0.76, 0.94))
-		panel.add_child(back)
-		return panel
-
-	sb.bg_color = Color(0.98, 0.97, 0.94)
-	sb.border_color = Color(0.78, 0.78, 0.78)
-	sb.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", sb)
-
-	var color := Color(0.75, 0.1, 0.14) if card.suit in ["♥", "♦"] else Color(0.1, 0.1, 0.12)
-
-	var corner := Label.new()
-	corner.text = "%s\n%s" % [card.rank, card.suit]
-	corner.position = Vector2(int(8 * scale), int(4 * scale))
-	corner.add_theme_font_size_override("font_size", maxi(11, int(20 * scale)))
-	corner.add_theme_color_override("font_color", color)
-	panel.add_child(corner)
-
-	var center := Label.new()
-	center.text = card.suit
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	center.add_theme_font_size_override("font_size", int(46 * scale))
-	center.add_theme_color_override("font_color", color)
-	panel.add_child(center)
-	return panel
+	return CardView.make(card, face_down, size)
 
 
 func _refresh_table() -> void:
@@ -1127,6 +1110,10 @@ func _on_balance_changed(new_balance: int) -> void:
 
 
 func _on_back_pressed() -> void:
+	_leave_table("res://scenes/main_menu.tscn")
+
+
+func _leave_table(target: String) -> void:
 	if phase == Phase.DEALER_TURN:
 		return
 	if phase == Phase.PLAYER_TURN or phase == Phase.INSURANCE:
@@ -1136,4 +1123,33 @@ func _on_back_pressed() -> void:
 			var hand: Dictionary = entry
 			refund += int(hand.bet)
 		Bank.deposit(refund)
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	get_tree().change_scene_to_file(target)
+
+
+# --- Charts and drills ---------------------------------------------------------
+
+## The charts open over the table rather than replacing it, so the shoe, the
+## count and any hand in play are all still there afterwards.
+func _on_charts_pressed() -> Modal:
+	var modal := Modal.open(self, "Strategy Charts", 900)
+	modal.name = "Charts"
+	modal.content.add_child(StrategyChart.new(true))
+	modal.add_button("Close", Color(0.25, 0.22, 0.2))
+	return modal
+
+
+func _on_drill_pressed(drill: Dictionary) -> void:
+	if Store.owns(drill.id):
+		_leave_table(drill.scene)
+	else:
+		# Nothing pops up at the table: a locked drill just takes you to its
+		# entry in Extras, and Back brings you straight here.
+		if _mid_hand():
+			return
+		Store.show_extras(get_tree(), drill.id, "res://scenes/blackjack.tscn")
+
+
+func _update_drill_buttons() -> void:
+	for drill in DRILLS:
+		var button: Button = drill_buttons[drill.id]
+		button.text = drill.title if Store.owns(drill.id) else "%s  ·  see Extras" % drill.title

@@ -13,6 +13,7 @@ const SUITES := [
 	"res://tests/baccarat_rules.gd",
 	"res://tests/store_rules.gd",
 	"res://tests/baccarat_coin_rules.gd",
+	"res://tests/blackjack_trainer_rules.gd",
 ]
 
 
