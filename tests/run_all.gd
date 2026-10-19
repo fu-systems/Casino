@@ -15,6 +15,8 @@ const SUITES := [
 	"res://tests/baccarat_coin_rules.gd",
 	"res://tests/blackjack_trainer_rules.gd",
 	"res://tests/count_trainer_rules.gd",
+	"res://tests/systems_rules.gd",
+	"res://tests/system_lab_rules.gd",
 ]
 
 

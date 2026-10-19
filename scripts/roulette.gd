@@ -49,6 +49,7 @@ var back_button: Button
 var spin_button: Button
 var repeat_button: Button
 var clear_button: Button
+var lab_button: Button
 
 
 func _ready() -> void:
@@ -92,6 +93,17 @@ func _build_ui() -> void:
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", COLOR_GOLD)
 	top_bar.add_child(title)
+
+	lab_button = Button.new()
+	lab_button.text = "Systems Lab"
+	lab_button.focus_mode = Control.FOCUS_NONE
+	CasinoUI.style_button(lab_button, Color(0.4, 0.3, 0.1), 17, 14, 8)
+	lab_button.pressed.connect(_on_lab_pressed)
+	top_bar.add_child(lab_button)
+
+	var lab_gap := Control.new()
+	lab_gap.custom_minimum_size = Vector2(16, 0)
+	top_bar.add_child(lab_gap)
 
 	balance_label = Label.new()
 	balance_label.add_theme_font_size_override("font_size", 22)
@@ -263,14 +275,15 @@ func _build_board_panel() -> Control:
 
 
 func _build_board(board: VBoxContainer) -> void:
+	# What each area covers and pays comes from RouletteBets, which the
+	# Systems Lab pays from too; this only lays the areas out.
 	# Main strip: zero, the 12x3 number grid, and column bets.
 	var strip := HBoxContainer.new()
 	strip.add_theme_constant_override("separation", 4)
 	board.add_child(strip)
 
 	strip.add_child(_make_bet_button(
-		"straight_0", "0", [0], 35, COLOR_GREEN,
-		Vector2(CELL.x, CELL.y * 3 + 8), 20))
+		"straight_0", "0", COLOR_GREEN, Vector2(CELL.x, CELL.y * 3 + 8), 20))
 
 	var grid := GridContainer.new()
 	grid.columns = 12
@@ -283,19 +296,15 @@ func _build_board(board: VBoxContainer) -> void:
 			var n := (col + 1) * 3 - row
 			var cell_color := COLOR_RED if n in RouletteWheel.RED_NUMBERS else COLOR_BLACK
 			grid.add_child(_make_bet_button(
-				"straight_%d" % n, str(n), [n], 35, cell_color, CELL, 16))
+				"straight_%d" % n, str(n), cell_color, CELL, 16))
 
 	var column_box := VBoxContainer.new()
 	column_box.add_theme_constant_override("separation", 4)
 	strip.add_child(column_box)
 
 	for row in 3:
-		var numbers: Array = []
-		for col in 12:
-			numbers.append((col + 1) * 3 - row)
 		column_box.add_child(_make_bet_button(
-			"column_%d" % row, "2:1", numbers, 2, COLOR_OUTSIDE,
-			Vector2(56, CELL.y), 14))
+			"column_%d" % row, "2:1", COLOR_OUTSIDE, Vector2(56, CELL.y), 14))
 
 	# Dozens.
 	var dozen_row := HBoxContainer.new()
@@ -303,13 +312,9 @@ func _build_board(board: VBoxContainer) -> void:
 	board.add_child(dozen_row)
 	dozen_row.add_child(_make_row_spacer())
 
-	var dozen_labels := ["1st 12", "2nd 12", "3rd 12"]
 	for i in 3:
-		var numbers: Array = []
-		for n in range(i * 12 + 1, i * 12 + 13):
-			numbers.append(n)
 		dozen_row.add_child(_make_bet_button(
-			"dozen_%d" % i, dozen_labels[i], numbers, 2, COLOR_OUTSIDE,
+			"dozen_%d" % i, RouletteBets.label("dozen_%d" % i), COLOR_OUTSIDE,
 			Vector2(212, 40), 15))
 
 	# Even-money bets.
@@ -318,31 +323,13 @@ func _build_board(board: VBoxContainer) -> void:
 	board.add_child(outside_row)
 	outside_row.add_child(_make_row_spacer())
 
-	var reds: Array = RouletteWheel.RED_NUMBERS.duplicate()
-	var blacks: Array = []
-	var evens: Array = []
-	var odds: Array = []
-	var lows: Array = []
-	var highs: Array = []
-	for n in range(1, 37):
-		if not n in RouletteWheel.RED_NUMBERS:
-			blacks.append(n)
-		if n % 2 == 0:
-			evens.append(n)
-		else:
-			odds.append(n)
-		if n <= 18:
-			lows.append(n)
-		else:
-			highs.append(n)
-
 	var outside_size := Vector2(104, 40)
-	outside_row.add_child(_make_bet_button("low", "1-18", lows, 1, COLOR_OUTSIDE, outside_size, 15))
-	outside_row.add_child(_make_bet_button("even", "EVEN", evens, 1, COLOR_OUTSIDE, outside_size, 15))
-	outside_row.add_child(_make_bet_button("red", "RED", reds, 1, COLOR_RED, outside_size, 15))
-	outside_row.add_child(_make_bet_button("black", "BLACK", blacks, 1, COLOR_BLACK, outside_size, 15))
-	outside_row.add_child(_make_bet_button("odd", "ODD", odds, 1, COLOR_OUTSIDE, outside_size, 15))
-	outside_row.add_child(_make_bet_button("high", "19-36", highs, 1, COLOR_OUTSIDE, outside_size, 15))
+	outside_row.add_child(_make_bet_button("low", "1-18", COLOR_OUTSIDE, outside_size, 15))
+	outside_row.add_child(_make_bet_button("even", "EVEN", COLOR_OUTSIDE, outside_size, 15))
+	outside_row.add_child(_make_bet_button("red", "RED", COLOR_RED, outside_size, 15))
+	outside_row.add_child(_make_bet_button("black", "BLACK", COLOR_BLACK, outside_size, 15))
+	outside_row.add_child(_make_bet_button("odd", "ODD", COLOR_OUTSIDE, outside_size, 15))
+	outside_row.add_child(_make_bet_button("high", "19-36", COLOR_OUTSIDE, outside_size, 15))
 
 
 func _make_row_spacer() -> Control:
@@ -351,14 +338,14 @@ func _make_row_spacer() -> Control:
 	return spacer
 
 
-func _make_bet_button(key: String, text: String, numbers: Array, payout: int, color: Color, min_size: Vector2, font_size: int) -> Button:
+func _make_bet_button(key: String, text: String, color: Color, min_size: Vector2, font_size: int) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = min_size
 	button.focus_mode = Control.FOCUS_NONE
 	CasinoUI.style_button(button, color, font_size, 2, 2, 6)
 	button.pressed.connect(_on_bet_button_pressed.bind(key))
-	board.add(key, button, {"numbers": numbers, "payout": payout})
+	board.add(key, button, {"numbers": RouletteBets.numbers(key), "payout": RouletteBets.payout(key)})
 	return button
 
 
@@ -405,6 +392,7 @@ func _lock_controls(locked: bool) -> void:
 	spin_button.disabled = locked
 	clear_button.disabled = locked
 	back_button.disabled = locked
+	lab_button.disabled = locked
 	repeat_button.disabled = locked and not repeat_mode
 
 
@@ -612,6 +600,23 @@ func _on_back_pressed() -> void:
 	# Refund anything still on the table before leaving.
 	board.refund_all()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+
+## Opens the Systems Lab with the chips on the table as its starting system,
+## or the lab's entry in Extras if it isn't unlocked.
+func _on_lab_pressed() -> void:
+	if _busy():
+		return
+	if not Store.owns("roulette_lab"):
+		Store.show_extras(get_tree(), "roulette_lab", "res://scenes/roulette.tscn")
+		return
+	var layout := {}
+	for key in board.staked_keys():
+		layout[key] = board.amount(key)
+	board.refund_all()
+	SystemLab.open_game = "roulette"
+	SystemLab.open_layout = layout
+	get_tree().change_scene_to_file("res://scenes/system_lab.tscn")
 
 
 ## Fixed gold triangle above the wheel marking the winning pocket.

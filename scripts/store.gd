@@ -57,6 +57,20 @@ const PACKS := [
 		],
 		"scene": "res://scenes/count_drill.tscn",
 	},
+	{
+		"id": "roulette_lab",
+		"title": "Roulette Systems Lab",
+		"game": "Roulette",
+		"price": "$3.99",
+		"lines": [
+			"Build any betting system as a flowchart of steps and IF / THEN rules — or open a famous one and change it.",
+			"Rules can watch single bets, several bets landing together, streaks, runs of results, the bankroll and two counters.",
+			"Run one session spin by spin, or thousands at once: how often it ends ahead, how often it goes broke, the worst it gets.",
+			"Every result sits next to what the 2.7% house edge predicts, so luck can't pass for a working system.",
+		],
+		"scene": "res://scenes/system_lab.tscn",
+		"lab_game": "roulette",
+	},
 ]
 
 const TIPS := [

@@ -57,6 +57,11 @@ jobs:
             exit "$status"
           fi
 
+      # A script error inside a suite can stop a check from running at all
+      # without failing one, so the log is scanned as well as the exit code.
+      - name: Fail on errors during the suites
+        run: .github/scripts/assert-no-godot-errors.sh /tmp/tests.log "running the rule suites"
+
   export:
     name: Export ${{ matrix.name }}
     runs-on: ubuntu-latest

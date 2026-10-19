@@ -17,6 +17,7 @@ const SCENES := [
 	"res://scenes/extras.tscn",
 	"res://scenes/strategy_drill.tscn",
 	"res://scenes/count_drill.tscn",
+	"res://scenes/system_lab.tscn",
 ]
 
 

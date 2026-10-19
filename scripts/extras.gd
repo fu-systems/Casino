@@ -176,7 +176,7 @@ func _add_card(entry: Dictionary, free: bool) -> void:
 		button.text = "Open" if entry.has("scene") else "Owned"
 		button.disabled = not entry.has("scene")
 		if entry.has("scene"):
-			button.pressed.connect(_open.bind(entry.scene))
+			button.pressed.connect(_open.bind(entry))
 	elif free:
 		button.text = "Unlock — Free"
 		button.pressed.connect(_unlock_free.bind(entry.id))
@@ -228,9 +228,12 @@ func _focus(id: String) -> void:
 	scroll.ensure_control_visible(card)
 
 
-func _open(scene: String) -> void:
+func _open(entry: Dictionary) -> void:
 	Store.return_scene = "res://scenes/main_menu.tscn"
-	get_tree().change_scene_to_file(scene)
+	# One lab scene serves both games; tell it which one this is.
+	if entry.has("lab_game"):
+		SystemLab.open_game = entry.lab_game
+	get_tree().change_scene_to_file(entry.scene)
 
 
 func _on_back_pressed() -> void:
