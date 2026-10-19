@@ -3,9 +3,10 @@ extends RefCounted
 ## A board of chip-takeable bet areas, shared by roulette, craps and baccarat.
 ##
 ## Tracks how much is staked on each area, keeps a gold chip badge on every
-## button carrying a bet, and moves money through `Bank`. Stakes are
-## paid up front the moment a chip is placed, exactly as on a real table, so
-## clearing a bet refunds it.
+## button carrying a bet, and moves money through `Bank` — or through a
+## wallet of its own, for the Systems Lab's simulated tables, whose areas
+## have no buttons at all. Stakes are paid up front the moment a chip is
+## placed, exactly as on a real table, so clearing a bet refunds it.
 ##
 ## Resolution is deliberately not here: what beats what is different in every
 ## game and belongs with that game.
@@ -25,11 +26,19 @@ enum Badge { CENTRE, CORNER }
 ## key -> {"button": Button, "amount": int, "meta": Dictionary}
 var bets := {}
 var badge_position: int = Badge.CENTRE
+## Anything with `withdraw(int) -> bool` and `deposit(int)`. Null means the
+## player's Bank.
+var wallet: Object = null
+## Everything staked, kept as chips move rather than summed on demand: the
+## Systems Lab asks for it every simulated roll.
+var _total := 0
 
 
 ## Registers a bet area. `meta` carries whatever the game needs at resolution
 ## time (winning numbers, payout ratio, and so on).
 func add(key: String, button: Button, meta: Dictionary = {}) -> void:
+	if bets.has(key):
+		_total -= int(bets[key].amount)
 	bets[key] = {"button": button, "amount": 0, "meta": meta}
 
 
@@ -46,10 +55,7 @@ func meta(key: String) -> Dictionary:
 
 
 func total() -> int:
-	var sum := 0
-	for key in bets:
-		sum += int(bets[key].amount)
-	return sum
+	return _total
 
 
 ## Any area currently carrying chips.
@@ -66,9 +72,10 @@ func staked_keys() -> Array:
 func place(key: String, chips: int) -> bool:
 	if not bets.has(key) or chips <= 0:
 		return false
-	if not Bank.withdraw(chips):
+	if not _wallet().withdraw(chips):
 		return false
 	bets[key].amount = int(bets[key].amount) + chips
+	_total += chips
 	refresh_badge(key)
 	return true
 
@@ -79,6 +86,7 @@ func move_in(key: String, chips: int) -> void:
 	if not bets.has(key) or chips <= 0:
 		return
 	bets[key].amount = int(bets[key].amount) + chips
+	_total += chips
 	refresh_badge(key)
 
 
@@ -89,6 +97,7 @@ func take(key: String) -> int:
 		return 0
 	var staked := int(bets[key].amount)
 	bets[key].amount = 0
+	_total -= staked
 	refresh_badge(key)
 	return staked
 
@@ -96,8 +105,7 @@ func take(key: String) -> int:
 ## Clears one area and refunds it.
 func refund(key: String) -> int:
 	var staked := take(key)
-	if staked > 0:
-		Bank.deposit(staked)
+	deposit(staked)
 	return staked
 
 
@@ -108,8 +116,8 @@ func refund_all() -> int:
 		returned += int(bets[key].amount)
 		bets[key].amount = 0
 		refresh_badge(key)
-	if returned > 0:
-		Bank.deposit(returned)
+	_total = 0
+	deposit(returned)
 	return returned
 
 
@@ -118,6 +126,17 @@ func clear_all() -> void:
 	for key in bets:
 		bets[key].amount = 0
 		refresh_badge(key)
+	_total = 0
+
+
+## Pays money out to whoever the board's stakes come from.
+func deposit(amount: int) -> void:
+	if amount > 0:
+		_wallet().deposit(amount)
+
+
+func _wallet() -> Object:
+	return wallet if wallet != null else Bank
 
 
 func refresh_all_badges() -> void:

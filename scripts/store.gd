@@ -71,6 +71,20 @@ const PACKS := [
 		"scene": "res://scenes/system_lab.tscn",
 		"lab_game": "roulette",
 	},
+	{
+		"id": "craps_lab",
+		"title": "Craps Systems Lab",
+		"game": "Craps",
+		"price": "$3.99",
+		"lines": [
+			"The Systems Lab for the dice: line bets with odds, come bets, place bets, the field, hardways and props.",
+			"Rules can react to seven-outs, points made, naturals, hard ways and any total — plus press, regress and take odds.",
+			"Famous systems to start from: Iron Cross, 3-Point Molly, place-and-press, and Martingale on the pass line.",
+			"Plays exactly the table's rules, and sets every result against each bet's own house edge.",
+		],
+		"scene": "res://scenes/system_lab.tscn",
+		"lab_game": "craps",
+	},
 ]
 
 const TIPS := [

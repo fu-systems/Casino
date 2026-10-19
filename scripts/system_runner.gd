@@ -107,6 +107,10 @@ static func run_session(sys: Dictionary, seed: int, detail: bool = true, scripte
 	_enter(state, steps, int(system.start))
 
 	var start := int(settings.bankroll)
+	# Putting bets down or taking them back never changes what the player is
+	# worth, so each round starts where the last one ended — no need to count
+	# the chips on the table twice a round.
+	var equity := start
 	var peak := start
 	var max_drawdown := 0
 	var total_staked := 0
@@ -119,7 +123,7 @@ static func run_session(sys: Dictionary, seed: int, detail: bool = true, scripte
 	var trace: Array = []
 
 	while int(state.round) < int(settings.rounds):
-		var equity_before: int = wallet.balance + adapter.on_table()
+		var equity_before := equity
 		var stakes := {}
 		var odds := {}
 		var sitting: bool = int(state.sit_out) > 0
@@ -146,7 +150,7 @@ static func run_session(sys: Dictionary, seed: int, detail: bool = true, scripte
 		var outcome: Dictionary = adapter.play(rng)
 		state.round = int(state.round) + 1
 		state.step_rounds = int(state.step_rounds) + 1
-		var equity: int = wallet.balance + adapter.on_table()
+		equity = wallet.balance + adapter.on_table()
 		var net := equity - equity_before
 		total_staked += int(outcome.staked)
 		expected -= float(outcome.cost)
@@ -337,7 +341,7 @@ static func _holds(cond: Dictionary, state: Dictionary, adapter: Variant, outcom
 					return false
 			return true
 		"compare":
-			var value := _variable(state, String(cond.get("var", "")))
+			var value := _variable(state, String(cond.get("var", "")), adapter)
 			var target := float(cond.get("value", 0))
 			match String(cond.get("op", ">=")):
 				">=":
@@ -366,13 +370,16 @@ static func _holds(cond: Dictionary, state: Dictionary, adapter: Variant, outcom
 	return false
 
 
-static func _variable(state: Dictionary, name: String) -> float:
+static func _variable(state: Dictionary, name: String, adapter: Variant) -> float:
 	match name:
 		"unit":
 			# In units, as the editor shows it.
 			return float(state.unit) / float(state.base)
 		"a", "b", "win_streak", "loss_streak", "round", "step_rounds", "net", "bankroll":
 			return float(state[name])
+	# Anything else is the game's own: craps knows the point, for one.
+	if adapter.has_method("variable"):
+		return adapter.variable(name)
 	return 0.0
 
 

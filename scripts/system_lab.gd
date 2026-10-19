@@ -75,7 +75,12 @@ func _initial_system() -> Dictionary:
 
 ## A flat system made of the chips on the table: the unit is their greatest
 ## common chip, so $25 on red and $5 on 17 becomes 5u red and 1u 17.
-static func _system_from_layout(chips: Dictionary) -> Dictionary:
+static func _system_from_layout(table: Dictionary) -> Dictionary:
+	# Only bets a system can make: odds and travelled come bets aren't.
+	var chips := {}
+	for entry in SystemModel.positions(open_game):
+		if table.has(entry.key):
+			chips[entry.key] = int(table[entry.key])
 	var unit := 0
 	for key in chips:
 		unit = _gcd(unit, int(chips[key]))

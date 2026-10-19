@@ -75,13 +75,17 @@ const UNIT_OPS := {"reset": "reset", "set": "set to", "add": "add", "multiply": 
 # --- Games ---------------------------------------------------------------------------
 
 ## Positions you can bet on: [{key, label, group}].
-static func positions(_game: String) -> Array:
+static func positions(game: String) -> Array:
+	if game == "craps":
+		return CrapsSim.positions()
 	return RouletteSim.positions()
 
 
 ## Things that can happen in a round, for "Something happens" and "A run of
 ## results": [[id, label]].
-static func events(_game: String) -> Array:
+static func events(game: String) -> Array:
+	if game == "craps":
+		return CrapsSim.events()
 	return RouletteSim.events()
 
 
@@ -95,8 +99,18 @@ static func position_label(game: String, key: String) -> String:
 	return key
 
 
-static func make_adapter(_game: String) -> RefCounted:
+static func make_adapter(game: String) -> RefCounted:
+	if game == "craps":
+		return CrapsSim.new()
 	return RouletteSim.new()
+
+
+## The numbers a rule can compare: the shared ones, plus the game's own.
+static func compare_vars(game: String) -> Dictionary:
+	var vars := COMPARE_VARS.duplicate()
+	if game == "craps":
+		vars.merge(CrapsSim.VARIABLES)
+	return vars
 
 
 static func game_name(game: String) -> String:
@@ -159,7 +173,7 @@ static func describe_condition(cond: Dictionary, game: String) -> String:
 				return "no %s in the last %d rounds" % [what, n]
 			return "%s in each of the last %d rounds" % [what, n]
 		"compare":
-			return "%s %s %s" % [COMPARE_VARS.get(cond.get("var", ""), "?"),
+			return "%s %s %s" % [compare_vars(game).get(cond.get("var", ""), "?"),
 				OP_SIGNS.get(cond.get("op", ">="), "?"), _number(cond.get("value", 0))]
 		"and", "or":
 			var parts: PackedStringArray = []

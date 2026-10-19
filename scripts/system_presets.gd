@@ -8,7 +8,7 @@ extends RefCounted
 
 static func for_game(game: String) -> Array:
 	if game == "craps":
-		return []
+		return craps()
 	return roulette()
 
 
@@ -111,6 +111,73 @@ static func _repeat_until_win() -> Dictionary:
 	return system
 
 
+# --- Craps -------------------------------------------------------------------------------
+
+static func craps() -> Array:
+	return [
+		_pass_and_odds(), _dont_and_lay(), _iron_cross(), _molly(),
+		_place_and_press(), _pass_martingale(),
+	]
+
+
+static func _pass_and_odds() -> Dictionary:
+	return _system("Pass line + max odds",
+		"The best bet in the house: the pass line with full odds behind it, which carry no edge at all.",
+		[_step(0, "Pass + odds", {"pass": 1}, [], [_odds("pass")])], "craps")
+
+
+static func _dont_and_lay() -> Dictionary:
+	return _system("Don't pass + lay odds",
+		"Betting with the house: don't pass, laying full odds against the point.",
+		[_step(0, "Don't + lay", {"dont_pass": 1}, [], [_odds("dont_pass")])], "craps")
+
+
+## In dollars rather than units: $5 on the 5, $6 each on the 6 and 8 (they
+## pay 7:6, so anything else wastes the rounding) and $5 on the field.
+static func _iron_cross() -> Dictionary:
+	var system := _system("Iron Cross",
+		"Once a point is set, cover every number but the 7: place 5, 6 and 8 plus the field. Wins on everything except a seven — which takes the lot.",
+		[
+			_step(0, "Wait for a point", {}, [_rule(_event("point_set"), [_goto(1)])]),
+			_step(1, "Iron Cross", {"place_5": 5, "place_6": 6, "place_8": 6, "field": 5},
+				[_rule(_event("seven_out"), [_goto(0)]), _rule(_event("point_made"), [_goto(0)])]),
+		], "craps")
+	system.settings.unit = 1
+	return system
+
+
+static func _molly() -> Dictionary:
+	return _system("3-Point Molly",
+		"The pass line and up to two come bets, all with full odds: three numbers working at once.",
+		[_step(0, "Molly", {"pass": 1, "come": 1},
+			[_rule(_compare("come_points", ">=", 2), [_bet("come", 0), _odds("pass"), _odds("come")])],
+			[_bet("come", 1), _odds("pass"), _odds("come")])], "craps")
+
+
+static func _place_and_press() -> Dictionary:
+	var system := _system("Place 6 & 8, press",
+		"Place the 6 and 8; after every second hit, press them both. A seven-out starts it over.",
+		[_step(0, "6 and 8", {"place_6": 1, "place_8": 1},
+			[
+				_rule(_event("seven_out"), [_bet("place_6", 1), _bet("place_8", 1), _counter("set", 0)]),
+				_rule(_all([_group("any", ["place_6", "place_8"]), _compare("a", ">=", 1)]),
+					[_press("place_6"), _press("place_8"), _counter("set", 0)]),
+				_rule(_group("any", ["place_6", "place_8"]), [_counter("add", 1)]),
+			])], "craps")
+	system.settings.unit = 6
+	return system
+
+
+static func _pass_martingale() -> Dictionary:
+	return _system("Martingale on the pass line",
+		"Double the pass line after every loss and reset after a win — the roulette classic on the dice.",
+		[_step(0, "Pass line", {"pass": 1},
+			[
+				_rule(_loses("pass"), [_unit("multiply", 2)]),
+				_rule(_wins("pass"), [_unit("reset")]),
+			])], "craps")
+
+
 # --- Building blocks ---------------------------------------------------------------------
 
 static func _system(name: String, notes: String, steps: Array, game: String = "roulette") -> Dictionary:
@@ -162,3 +229,31 @@ static func _goto(id: int) -> Dictionary:
 
 static func _stop() -> Dictionary:
 	return {"type": "stop"}
+
+
+static func _event(name: String) -> Dictionary:
+	return {"type": "event", "event": name}
+
+
+static func _wins(key: String) -> Dictionary:
+	return {"type": "wins", "pos": key}
+
+
+static func _loses(key: String) -> Dictionary:
+	return {"type": "loses", "pos": key}
+
+
+static func _bet(key: String, units: int) -> Dictionary:
+	return {"type": "bet", "pos": key, "units": units}
+
+
+static func _odds(key: String, mult: int = 0) -> Dictionary:
+	return {"type": "odds", "pos": key, "mult": mult}
+
+
+static func _press(key: String) -> Dictionary:
+	return {"type": "press", "pos": key}
+
+
+static func _counter(op: String, value: float) -> Dictionary:
+	return {"type": "counter", "which": "a", "op": op, "value": value}

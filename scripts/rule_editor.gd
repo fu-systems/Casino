@@ -133,8 +133,9 @@ static func _condition_fields(parent: Node, fields: VBoxContainer, system: Dicti
 				refresh.call())
 		"compare":
 			var row := _row(fields, "Compare")
-			var vars: Array = SystemModel.COMPARE_VARS.keys()
-			var var_pick := _options(row, vars.map(func(k: String) -> String: return SystemModel.COMPARE_VARS[k]),
+			var names := SystemModel.compare_vars(game)
+			var vars: Array = names.keys()
+			var var_pick := _options(row, vars.map(func(k: String) -> String: return names[k]),
 				vars.find(draft.var))
 			var_pick.item_selected.connect(func(i: int) -> void:
 				draft.var = vars[i]
