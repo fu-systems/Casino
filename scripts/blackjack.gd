@@ -20,6 +20,7 @@ const TRAINER_WIDTH := 348
 ## The paid blackjack packs, opened from the bottom of the trainer panel.
 const DRILLS := [
 	{"id": "strategy_trainer", "title": "Strategy Trainer", "scene": "res://scenes/strategy_drill.tscn"},
+	{"id": "count_trainer", "title": "Counting Trainer", "scene": "res://scenes/count_drill.tscn"},
 ]
 
 const COLOR_FELT := Color(0.05, 0.32, 0.15)

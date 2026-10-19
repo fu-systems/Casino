@@ -44,6 +44,19 @@ const PACKS := [
 		],
 		"scene": "res://scenes/strategy_drill.tscn",
 	},
+	{
+		"id": "count_trainer",
+		"title": "Card Counting Trainer",
+		"game": "Blackjack",
+		"price": "$2.99",
+		"lines": [
+			"A dealer and up to seven players, all playing basic strategy — you tap to lay every card.",
+			"Keep the Hi-Lo count and enter it when each round ends; add the true count for a harder test.",
+			"Four time limits, from Relaxed to 6 seconds a round, with best scores for cards counted and pace.",
+			"When you miss, it shows the round card by card with each card's +1, 0 or -1.",
+		],
+		"scene": "res://scenes/count_drill.tscn",
+	},
 ]
 
 const TIPS := [
