@@ -3,7 +3,13 @@
 [![Build](https://github.com/fu-systems/Casino/actions/workflows/build.yml/badge.svg)](https://github.com/fu-systems/Casino/actions/workflows/build.yml)
 
 A small casino game built with **Godot 4** — blackjack, European roulette,
-craps and baccarat, sharing one bankroll.
+craps and baccarat, sharing one bankroll of free play money.
+
+It's also an honest one. It prints the house edge, explains the right play,
+and sells no chips: everything here is free, and the only things for sale
+are optional one-time packs — trainers for blackjack and labs for testing
+betting systems — plus a tip jar. See [Play money, and what's for
+sale](#play-money-and-whats-for-sale).
 
 ## Download a build
 
@@ -66,8 +72,34 @@ tweak.
    `project.godot`.
 3. Press **F5** (or the Play button) to run.
 
-You start with a **$1,000** bankroll shared between both games. You can reset
-it from the main menu at any time.
+You start with a **$1,000** bankroll shared between every game. It's saved
+between launches, and you can reset it from the main menu at any time.
+
+## Play money, and what's for sale
+
+The first launch says it plainly: Casino is a simulation for adults (18+),
+played with chips that are free, unlimited and worth nothing — they can't be
+bought, won or cashed out. The lobby says it again in its footer, and its
+**About** box carries the privacy statement ([PRIVACY.md](PRIVACY.md): no
+data collected) and links to problem-gambling help.
+
+**Extras** in the lobby lists everything optional:
+
+| | | Price |
+| --- | --- | --- |
+| Strategy charts | Blackjack — basic strategy and the Illustrious 18 | free |
+| Coin Flip | Baccarat — the game shown as the coin flip it is | free |
+| Strategy Trainer | Blackjack — drills on every decision | pack |
+| Card Counting Trainer | Blackjack — tap-to-deal counting drills | pack |
+| Roulette Systems Lab | Build and test betting systems | pack |
+| Craps Systems Lab | The same, for the dice | pack |
+| Tip jar | Changes nothing; says thank you | tip |
+
+Packs are one-time purchases through Google Play, restorable on any device.
+Nothing that was free went behind a paywall, nothing nags, and nothing sells
+chips; [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) has the full list of
+rules the code keeps, and how to publish. Builds that have no store to buy
+from — the desktop builds and the debug APK — come with every pack unlocked.
 
 ## Games
 
@@ -149,6 +181,37 @@ panels advise on that instead.
 The count panel implements the full **Illustrious 18**: fifteen hard-total
 deviations, the two ten-splitting ones, and insurance at true count +3.
 
+#### Strategy charts (free)
+
+**Strategy Charts**, at the bottom of the trainer panel, opens the whole of
+basic strategy — hard totals, soft totals and pairs against every upcard —
+and the Illustrious 18 as a table of indices. They open over the table, so
+the shoe and the count are still there afterwards. No cell is typed in: each
+one asks the same strategy code the hints use about a real hand, so a chart
+can never disagree with the advice at the table.
+
+#### Strategy Trainer (pack)
+
+A hand, an upcard, sometimes a count: what's the play? **Basic** covers every
+chart decision, three-card hands that can't double included. **Count** sits
+on the Illustrious 18, at true counts either side of each index, plus
+insurance. **Weak Spots** asks about the cells you miss most, remembered
+between sessions. **Blitz** gives you 60 seconds. Right answers score, with a
+multiplier for a streak; a wrong one stops to show the right play, the
+reason, and the cell on the chart.
+
+#### Card Counting Trainer (pack)
+
+A dealer and up to seven players who all play basic strategy, dealt from the
+same shoe as the table. Every tap lays the next card in table order — round
+the table twice, the hole card face down until it turns over, each seat's
+hits, doubles and splits, then the dealer — so you set the pace, inside a
+time limit per round (Relaxed, 20, 10 or 6 seconds). When the round ends you
+enter the running count on a number pad, and optionally the true count
+against the discard tray. A miss or a timeout ends the run, and the summary
+replays the round card by card with each card's Hi-Lo value. The best cards
+counted and the best pace are kept for each time limit.
+
 ### Roulette
 
 - European wheel (single zero, 37 pockets).
@@ -177,6 +240,35 @@ Winning the last spin doesn't mean the run made money, so the closing
 message reports where the whole run finished, not just the spin that ended
 it. The board, chips, Spin, Clear Bets, and Back are all locked while a run
 is in progress.
+
+#### Systems Lab (pack)
+
+Build a betting system as a flowchart and play it for thousands of spins.
+A system is a set of **steps**. Each step has its bets, in units, and a list
+of **IF / THEN** rules checked after every spin: the first rule that matches
+runs, and if none does the step's OTHERWISE does.
+
+- **Conditions:** the round won, lost or pushed; a bet winning or losing;
+  several bets together (all, any, none, exactly N or at least N of them); a
+  run of results ("red the last five spins"); the zero; and comparisons on
+  the win and loss streaks, the bankroll, the session's net, the unit, the
+  rounds played and two counters — combined with and, or and not.
+- **Actions:** set or change a bet, change the unit (reset, set, add,
+  multiply), go to a step, change a counter, sit out, or stop.
+
+Everything is built from dropdowns, steppers and a miniature board, and the
+**Flowchart** tab draws the system as boxes and labelled arrows. Nine famous
+systems open as editable copies — flat, Martingale, Paroli, D'Alembert,
+Fibonacci (as a ladder of steps), two dozens, wait-for-five-reds, a triple
+cover, and Repeat Until Win — and systems save by name and share as a line of
+text. The **Systems Lab** button on the table brings the chips on the table
+with it as a starting system.
+
+**Results** plays one session with a spin-by-spin trace (which step, which
+rule fired, why), or many sessions as a histogram: how often it finished
+ahead, how often it ran short of its next bet, the average, the median, the
+best and the worst. Every result sits beside what the 2.7% edge predicts on
+the money staked — over enough spins the two agree, whatever the system.
 
 ### Craps
 
@@ -272,6 +364,21 @@ Come chips can't be placed straight onto a number — they have to win their
 way over from the bar, which is why tapping a number's COME cell takes odds
 rather than placing a new bet.
 
+#### Systems Lab (pack)
+
+The roulette lab's flowchart builder, for the dice, playing the table's own
+rules. A craps layout means *keep these bets up*: line bets go down on a
+come-out and come bets once a point is on, each bet is topped back up before
+the roll, a dropped bet comes down unless it's a contract, and odds go behind
+the line or every come point at the multiple asked for, within the 3-4-5x
+caps. Rules can also react to seven-outs, points set and made, naturals,
+craps, hard ways and any total, and test the point and the number of come
+bets working; actions add odds, press and regress. Presets: pass line with
+max odds, don't pass laying odds, Iron Cross, 3-Point Molly, place 6 and 8
+with a press, and Martingale on the pass line. Each result is set against
+each settled bet's own house edge. The table's lab button won't leave a
+contract bet stranded mid-hand — finish the hand first.
+
 ### Baccarat
 
 Punto Banco: eight decks, no decisions. Back the **Player**, the **Banker**
@@ -300,6 +407,15 @@ dollar**, and the result line always names it, so a $100 banker win reads as
 Pairs are by **rank, not value** — a king and a ten both count zero but are
 not a pair.
 
+#### Coin Flip (free)
+
+Unlock it in Extras and a **Coin Flip** button appears on the rail. The hand
+is still dealt from the shoe and settled by the tableau, so the odds and the
+payouts are exactly the same — but all the table shows is a coin: heads for
+the banker, tails for the player, on its edge for a tie. Baccarat has no
+decisions; this is what it is underneath. The pair bets need cards, so they
+leave the table while it's on.
+
 The shoe reshuffles at the same 25% cut card as blackjack, and the card
 count is shown under the table.
 
@@ -307,22 +423,38 @@ count is shown under the table.
 
 | Path | Purpose |
 | --- | --- |
-| `scripts/bank.gd` | Shared bankroll autoload (`Bank`) |
-| `scripts/main_menu.gd` + `scenes/main_menu.tscn` | Lobby |
-| `scripts/blackjack.gd` + `scenes/blackjack.tscn` | Blackjack table, shoe, and trainer panel |
+| `scripts/save_data.gd` | Everything saved between launches (`SaveData` autoload) |
+| `scripts/bank.gd` | Shared bankroll autoload (`Bank`), saved through `SaveData` |
+| `scripts/store.gd` | What the player owns (`Store` autoload): Google Play Billing, or every pack unlocked where there's no store |
+| `scripts/main_menu.gd` + `scenes/main_menu.tscn` | Lobby, with the play-money notice and About box |
+| `scripts/extras.gd` + `scenes/extras.tscn` | Extras: packs, free unlocks and the tip jar |
+| `scripts/modal.gd`, `scripts/locked_pack.gd` | Shared overlay panel, and the cover a locked pack shows |
+| `scripts/blackjack.gd` + `scenes/blackjack.tscn` | Blackjack table and trainer panel |
+| `scripts/blackjack_shoe.gd`, `scripts/card_view.gd` | The shoe and its Hi-Lo count, and how a card is drawn — shared with the trainers |
 | `scripts/blackjack_strategy.gd` | Hi-Lo values, basic strategy, and count index plays |
+| `scripts/strategy_chart.gd` | The strategy charts, generated from `BlackjackStrategy` |
+| `scripts/strategy_quiz.gd`, `scripts/strategy_drill.gd` + `scenes/strategy_drill.tscn` | Strategy Trainer: its questions, and its screen |
+| `scripts/blackjack_round_sim.gd`, `scripts/count_drill.gd` + `scenes/count_drill.tscn` | Counting Trainer: a table of basic-strategy players, and its screen |
 | `scripts/roulette.gd` + `scenes/roulette.tscn` | Roulette table |
+| `scripts/roulette_bets.gd` | What every roulette bet covers and pays — the table and the lab both read it |
 | `scripts/roulette_wheel.gd` | Custom-drawn spinning wheel |
-| `scripts/craps.gd` + `scenes/craps.tscn` | Craps game logic and rail |
+| `scripts/craps.gd` + `scenes/craps.tscn` | Craps table and rail |
+| `scripts/craps_engine.gd` | The craps rules: every bet's settlement, shared by the table and the lab |
 | `scripts/craps_table.gd` | The felt: every betting area's geometry, and the painting of it |
 | `scripts/craps_die.gd` | Die face drawn from pips, shared by the dice and the prop box |
 | `scripts/poly_button.gd` | Button whose clickable area is a polygon, not its rectangle |
-| `scripts/baccarat.gd` + `scenes/baccarat.tscn` | Baccarat table and drawing tableau |
+| `scripts/baccarat.gd` + `scenes/baccarat.tscn` | Baccarat table and drawing tableau, with Coin Flip mode |
+| `scripts/coin.gd` | The coin Coin Flip shows |
+| `scripts/system_model.gd`, `scripts/system_presets.gd` | Systems Lab: the shape of a system, and the famous ones |
+| `scripts/system_runner.gd`, `scripts/roulette_sim.gd`, `scripts/craps_sim.gd` | Playing a system: the rules interpreter, and each game's simulated table |
+| `scripts/system_lab.gd` + `scenes/system_lab.tscn` | The lab's screen, shared by both games |
+| `scripts/rule_editor.gd`, `scripts/position_picker.gd`, `scripts/flowchart_view.gd`, `scripts/lab_chart.gd` | The lab's editors, bet picker, flowchart and results chart |
 | `scripts/casino_ui.gd` | Shared button and panel styling |
 | `scripts/bet_board.gd` | Shared chip-placement board used by roulette, craps and baccarat |
 | `scripts/safe_area.gd` | Notch/cutout-aware margin container |
 | `tests/run_all.gd` + `tests/*_rules.gd` | Rule suites, run by CI |
-| `export_presets.cfg` | Linux, Windows, and Android export presets used by CI |
+| `export_presets.cfg` | Linux, Windows, Android (debug APK) and Android Play (signed App Bundle) presets used by CI |
+| `PRIVACY.md`, `docs/PLAY_RELEASE.md` | The privacy policy, and how to publish on Google Play |
 | `.github/workflows/build.yml` | Check, export, and release pipeline |
 | `.github/actions/setup-godot/` | Composite action that installs Godot + templates |
 
@@ -341,11 +473,19 @@ godot --headless --path . res://tests/run_all.tscn
 
 | Suite | What it pins down |
 | --- | --- |
+| `save_rules` | The bankroll, notice and scores survive a restart, and the suites never touch a real save |
 | `layout_fits` | Every scene fits the 1280x720 design viewport |
 | `blackjack_rules` | Shoe composition, the Hi-Lo count against the undealt remainder, both strategy charts and their indices, split stakes, split aces, insurance |
 | `roulette_rules` | Wheel order and colours, the board covering 1-36 once, payouts, and every way a repeat-until-win run can stop |
 | `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, what a seven-out takes, which winners stay up, what Clear Bets may and may not remove, and that every hit-zone on the felt matches the paint |
 | `baccarat_rules` | All 80 cells of the banker tableau, naturals, pair detection, and commission arithmetic |
+| `store_rules` | Packs start locked and unlock when bought; pending payments unlock nothing; purchases are acknowledged, tips consumed, refunds taken back; restore; free unlocks |
+| `baccarat_coin_rules` | Coin Flip settles every hand exactly as card mode does |
+| `blackjack_trainer_rules` | The charts against the published chart, the quiz against `BlackjackStrategy` over thousands of hands, and the drill's scoring, corrections and Blitz |
+| `count_trainer_rules` | Table order, the hole card counted only when it turns over, 1,500 rounds of basic-strategy seats against an S17 dealer, and the drill's checks and timer |
+| `systems_rules` | The lab pays every bet as the table does; rules, groups, patterns, steps, stops and the table cap; flat red converges on the 2.7% edge |
+| `system_lab_rules` | Every kind of condition and action can be built in the editor; runs, saving and sharing from the screen |
+| `craps_lab_rules` | Craps bets go down only in season, contracts stay, odds respect the caps, events report correctly, and the presets play as described |
 
 Three of those are worth calling out. The craps suite rolls the dice 180,000
 times and checks the histogram against the real 2d6 distribution, because
@@ -383,7 +523,8 @@ via *Run workflow*:
 
 1. **Check** — imports the project, boots it headless, and runs the rule
    suites, failing the build on any parse error, runtime error, or broken
-   rule.
+   rule — including a script error inside a suite, which could otherwise skip
+   checks without failing one.
 2. **Export** — builds Linux and Windows in parallel and uploads each as an
    artifact.
 3. **Export Android** — builds a debug-signed APK. Godot reads the SDK
@@ -391,12 +532,12 @@ via *Run workflow*:
    generates that file with `--editor --quit` and rewrites the two path keys
    before exporting. It then checks the APK really is one, by looking for
    `AndroidManifest.xml` and `classes.dex` inside it.
-4. **Publish release** — on a `v*` tag, zips the builds and attaches them to a
+4. **Export Android (Play)** — on a `v*` tag (or by hand), builds the signed
+   App Bundle for the Play Store with Google Play Billing; see
+   [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) for the keystore secrets it
+   needs.
+5. **Publish release** — on a `v*` tag, zips the builds and attaches them to a
    GitHub release.
-
-A **release-signed** APK needs a real keystore; wire one in through repo
-secrets and switch the export to `--export-release` when you want to ship to
-the Play Store.
 
 Godot itself exits `0` even when scripts fail to parse, so
 `.github/scripts/assert-no-godot-errors.sh` scans the logs instead. It ignores
