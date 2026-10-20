@@ -1,6 +1,6 @@
 # Privacy policy
 
-*Casino* (package `systems.fu.casino`), by fu.systems. Last updated 19 October 2026.
+*Casino* (package `systems.fu.casino`), by fu.systems. Last updated 20 October 2026.
 
 ## What Casino collects
 
@@ -11,15 +11,21 @@ anyone else.
 ## What stays on your device
 
 Your chip balance, settings, high scores, trainer progress and saved betting
-systems are stored only on your device, in the app's private storage. They
-never leave it, and uninstalling the app deletes them.
+systems are stored only on your device, in the app's private storage. Casino
+never sends them anywhere, and uninstalling the app on a phone deletes them.
 
 ## Purchases
 
-Optional purchases (feature packs and tips) are handled entirely by Google
-Play. Casino asks Google Play which products you own so it can unlock them; it
-never sees your payment details. Google's handling of that data is covered by
-the [Google Privacy Policy](https://policies.google.com/privacy).
+On Android, optional purchases (feature packs and tips) are handled entirely
+by Google Play. Casino asks Google Play which products you own so it can unlock
+them; it never sees your payment details. Google's handling of that data is
+covered by the [Google Privacy Policy](https://policies.google.com/privacy).
+
+The Steam edition is bought through Steam and includes everything, so the game
+itself makes no purchases and never connects to the internet. If you have
+Steam Cloud turned on, Steam syncs the save file between your computers; that
+is between you and Valve, under the
+[Steam Privacy Policy](https://store.steampowered.com/privacy_agreement/).
 
 ## Play money only
 

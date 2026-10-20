@@ -9,6 +9,7 @@ func run() -> void:
 	_test_bank_persists()
 	await _test_notice_shows_once()
 	await _test_about_lists_help()
+	_test_fullscreen_choice()
 
 
 func _test_suites_run_in_memory() -> void:
@@ -107,9 +108,36 @@ func _test_about_lists_help() -> void:
 	check("collects no personal data" in text, "About should carry the privacy statement")
 	for link in menu.HELP_LINKS:
 		check(link[0] in text, "About should offer %s" % link[0])
+	about.close()
+	await frames()
+
+	Store.backend = Store.Backend.STEAM
+	about = menu._show_about()
+	await frames()
+	text = _all_text(about)
+	check("Steam" in text and "Google Play" not in text,
+		"the Steam edition's About should name Steam, not Google Play")
+	Store.use_test_backend()
 	menu.queue_free()
 	await frames()
-	note("About carries the privacy line and the help links")
+	note("About carries the privacy line and the help links, naming the right store")
+
+
+func _test_fullscreen_choice() -> void:
+	SaveData.erase_value(WindowMode.SECTION, WindowMode.SAVE_KEY)
+	check(not WindowMode.is_fullscreen(), "builds other than Steam should start in a window")
+	WindowMode.toggle()
+	check(WindowMode.is_fullscreen() and bool(SaveData.get_value("display", "fullscreen", false)),
+		"switching to fullscreen should be remembered")
+	WindowMode.toggle()
+	check(not WindowMode.is_fullscreen(), "switching back should be remembered too")
+
+	SaveData.erase_value(WindowMode.SECTION, WindowMode.SAVE_KEY)
+	Store.backend = Store.Backend.STEAM
+	check(WindowMode.is_fullscreen(), "the Steam edition should start fullscreen")
+	Store.use_test_backend()
+	SaveData.erase_value(WindowMode.SECTION, WindowMode.SAVE_KEY)
+	note("fullscreen is remembered, and only the Steam edition starts in it")
 
 
 ## Every Label and Button caption under `node`, joined, for text assertions.

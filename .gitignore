@@ -12,3 +12,6 @@ export_credentials.cfg
 
 # The Android Gradle build template, installed at export time
 android/
+
+# Steam uploads: builds and your app and depot IDs (docs/STEAM_RELEASE.md).
+/steam/

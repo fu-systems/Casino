@@ -182,7 +182,9 @@ func _show_about() -> Modal:
 	modal.add_text("Blackjack, roulette, craps and baccarat, played for free chips "
 		+ "that are worth nothing.")
 	modal.add_text("Privacy: Casino collects no personal data and contains no ads or "
-		+ "analytics. Purchases are handled entirely by Google Play.", 16, COLOR_MUTED)
+		+ "analytics. " + Store.privacy_note(), 16, COLOR_MUTED)
+	if WindowMode.available():
+		modal.add_text("F11 or Alt+Enter switches fullscreen.", 16, COLOR_MUTED)
 	modal.add_text("If gambling has stopped being fun for you or someone you know, "
 		+ "free and confidential help is available:", 16, COLOR_MUTED)
 	for link in HELP_LINKS:

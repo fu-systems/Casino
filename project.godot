@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 SaveData="*res://scripts/save_data.gd"
 Bank="*res://scripts/bank.gd"
 Store="*res://scripts/store.gd"
+WindowMode="*res://scripts/window_mode.gd"
 
 [display]
 

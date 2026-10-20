@@ -112,7 +112,10 @@ func _rebuild() -> void:
 	cards.clear()
 
 	if not Store.PACKS.is_empty():
-		_add_header("PACKS", "One-time purchases. Buy once, keep forever, restore on any device.")
+		if Store.all_included():
+			_add_header("INCLUDED", "Everything below comes with this edition.")
+		else:
+			_add_header("PACKS", "One-time purchases. Buy once, keep forever, restore on any device.")
 		for entry in Store.PACKS:
 			_add_card(entry, false)
 
@@ -120,10 +123,11 @@ func _rebuild() -> void:
 	for entry in Store.FREE_UNLOCKS:
 		_add_card(entry, true)
 
-	_add_tip_jar()
+	if Store.sells_tips():
+		_add_tip_jar()
 
 	status_label.text = Store.status_text()
-	restore_button.visible = Store.backend != Store.Backend.UNLOCKED
+	restore_button.visible = not Store.all_included()
 
 
 func _add_header(text: String, sub: String) -> void:

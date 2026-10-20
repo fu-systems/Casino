@@ -1,13 +1,15 @@
 extends Node
 ## What the player owns, registered as the "Store" autoload.
 ##
-## Three ways to run, picked once at startup:
+## Four ways to run, picked once at startup:
 ##
 ## - PLAY: builds exported with the `play_store` feature (the "Android Play"
 ##   preset) sell through Google Play Billing. Ownership is cached in
 ##   `SaveData` so packs keep working offline, but Google Play stays the source
 ##   of truth: every connect re-queries purchases, which is what makes Restore
 ##   work and what takes a refunded pack away again.
+## - STEAM: builds exported with the `steam` feature (the "Steam" presets) are
+##   bought whole, so every pack comes included and there's no tip jar.
 ## - UNLOCKED: every other build (desktop, the debug APK) has nowhere to buy
 ##   from, and the code is public anyway, so every pack is simply unlocked.
 ## - TEST: the rule suites drive a fake account with `use_test_backend()`.
@@ -25,7 +27,7 @@ signal prices_changed
 signal store_message(text: String)
 signal tip_thanked(id: String)
 
-enum Backend { UNLOCKED, PLAY, TEST }
+enum Backend { UNLOCKED, PLAY, TEST, STEAM }
 
 ## Paid packs, in the order the Extras screen lists them. `scene` is where
 ## the pack's Open button goes once it's owned; `price` is only the fallback
@@ -139,6 +141,8 @@ func _ready() -> void:
 		_free[str(id)] = true
 	if OS.has_feature("play_store"):
 		_start_play()
+	elif OS.has_feature("steam"):
+		backend = Backend.STEAM
 	else:
 		backend = Backend.UNLOCKED
 
@@ -152,9 +156,20 @@ func owns(id: String) -> bool:
 		return _free.has(id)
 	if _is_tip(id):
 		return false
-	if backend == Backend.UNLOCKED:
+	if all_included():
 		return true
 	return _owned.has(id)
+
+
+## Whether this build comes with every pack, so there's nothing to buy.
+func all_included() -> bool:
+	return backend == Backend.UNLOCKED or backend == Backend.STEAM
+
+
+## Whether the tip jar belongs here. A game someone has already paid for
+## doesn't ask for tips on top.
+func sells_tips() -> bool:
+	return backend != Backend.STEAM
 
 
 ## The store's localized price, or "" until Google Play has said.
@@ -177,9 +192,21 @@ func status_text() -> String:
 	match backend:
 		Backend.UNLOCKED:
 			return "Every pack is unlocked in this build. Packs and tips are sold through Google Play."
+		Backend.STEAM:
+			return "Everything is included in the Steam edition. Thanks for buying Casino."
 		Backend.TEST:
 			return "Test store."
 	return _status
+
+
+## The About box's line on who handles the money.
+func privacy_note() -> String:
+	match backend:
+		Backend.STEAM:
+			return "Steam handles the purchase; the game itself never connects to the internet."
+		Backend.UNLOCKED:
+			return "Nothing is sold in this build."
+	return "Purchases are handled entirely by Google Play."
 
 
 func pack(id: String) -> Dictionary:
@@ -195,6 +222,8 @@ func buy(id: String) -> void:
 	match backend:
 		Backend.UNLOCKED:
 			store_message.emit("There's nothing to buy in this build — every pack is already unlocked.")
+		Backend.STEAM:
+			store_message.emit("There's nothing to buy — the Steam edition already includes everything.")
 		Backend.TEST:
 			if _is_tip(id):
 				tip_thanked.emit(id)

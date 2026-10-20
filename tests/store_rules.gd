@@ -48,8 +48,10 @@ func run() -> void:
 	_test_tips_and_free_unlocks()
 	_test_restore_and_refund()
 	_test_unlocked_builds()
+	_test_steam_edition()
 	_test_play_purchases()
 	await _test_extras_screen()
+	await _test_steam_extras()
 	Store.use_test_backend()
 
 
@@ -111,6 +113,31 @@ func _test_unlocked_builds() -> void:
 		check(not Store.can_buy(entry.id), "there's nowhere to tip in a build without a store")
 	Store.use_test_backend()
 	note("desktop and debug builds unlock every pack but still ask for free unlocks")
+
+
+func _test_steam_edition() -> void:
+	Store.use_test_backend()
+	Store.backend = Store.Backend.STEAM
+	check(Store.all_included(), "the Steam edition should include everything")
+	for entry in Store.PACKS:
+		check(Store.owns(entry.id), "the Steam edition should own %s" % entry.id)
+		check(not Store.can_buy(entry.id), "nothing should be for sale in the Steam edition")
+	for entry in Store.FREE_UNLOCKS:
+		check(not Store.owns(entry.id), "free unlocks stay a deliberate tap on Steam too")
+	check(not Store.sells_tips(), "a game someone paid for shouldn't ask for tips")
+	check("Steam" in Store.status_text(), "the status line should name the Steam edition")
+	check("Steam" in Store.privacy_note() and "Google" not in Store.privacy_note(),
+		"the privacy line should name Steam, not Google Play")
+
+	var said: Array = []
+	var listen := func(text: String) -> void: said.append(text)
+	Store.store_message.connect(listen)
+	Store.buy("tip_small")
+	Store.store_message.disconnect(listen)
+	check(said.size() == 1 and "includes everything" in str(said[0]),
+		"buying on Steam should explain there's nothing to buy")
+	Store.use_test_backend()
+	note("the Steam edition includes every pack, sells nothing and has no tip jar")
 
 
 func _test_play_purchases() -> void:
@@ -195,3 +222,28 @@ func _test_extras_screen() -> void:
 	await frames()
 	Store.use_test_backend()
 	note("Extras lists every pack and free unlock, unlocks for free, and thanks tips")
+
+
+func _test_steam_extras() -> void:
+	Store.use_test_backend()
+	Store.backend = Store.Backend.STEAM
+	var extras: Control = load("res://scenes/extras.tscn").instantiate()
+	add_child(extras)
+	await frames(2)
+	check(not extras.cards.has("tips"), "the Steam edition's Extras should have no tip jar")
+	check(not extras.restore_button.visible, "there's nothing to restore in the Steam edition")
+	var headers: Array = []
+	for child in extras.list.get_children():
+		if child is Label:
+			headers.append(child.text)
+	check("INCLUDED" in headers and "PACKS" not in headers,
+		"packs should be listed as included, not for sale")
+	for entry in Store.PACKS:
+		var action: Button = extras.cards[entry.id].find_child("Action", true, false)
+		check(action.text == "Open" and not action.disabled,
+			"%s should open straight away, got '%s'" % [entry.id, action.text])
+	check("Steam" in extras.status_label.text, "the status line should name the Steam edition")
+	extras.queue_free()
+	await frames()
+	Store.use_test_backend()
+	note("the Steam edition's Extras opens every pack and shows no tip jar or restore")

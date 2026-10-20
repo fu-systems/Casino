@@ -74,10 +74,25 @@ jobs:
             preset: Linux
             binary: Casino.x86_64
             artifact: casino-linux-x86_64
+            readme: true
           - name: Windows
             preset: Windows
             binary: Casino.exe
             artifact: casino-windows-x86_64
+            readme: true
+          # The Steam edition: the same game with the `steam` feature, which
+          # includes every pack and drops the tip jar. Its depots hold only
+          # the game, and it never goes into the GitHub release.
+          - name: Steam Linux
+            preset: Steam Linux
+            binary: Casino.x86_64
+            artifact: casino-steam-linux
+            readme: false
+          - name: Steam Windows
+            preset: Steam Windows
+            binary: Casino.exe
+            artifact: casino-steam-windows
+            readme: false
     steps:
       - uses: actions/checkout@v4
 
@@ -110,6 +125,7 @@ jobs:
         run: .github/scripts/assert-no-godot-errors.sh /tmp/export.log "exporting ${{ matrix.name }}"
 
       - name: Include README with the build
+        if: matrix.readme
         run: cp README.md "build/${{ matrix.artifact }}/README.md"
 
       - name: Upload artifact
@@ -360,8 +376,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          for dir in artifacts/*/; do
-            name="$(basename "$dir")"
+          # Only the free builds. The download takes every artifact the run
+          # has made so far, which can include the Play bundle and the Steam
+          # depots; those go to their stores, not here.
+          for name in casino-linux-x86_64 casino-windows-x86_64 casino-android; do
+            dir="artifacts/${name}"
+            if [ ! -d "$dir" ]; then
+              echo "::error::Missing build artifact ${name}"
+              exit 1
+            fi
             (cd "$dir" && zip -qr "$GITHUB_WORKSPACE/dist/${name}.zip" .)
             echo "packaged ${name}.zip"
           done

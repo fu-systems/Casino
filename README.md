@@ -20,7 +20,8 @@ Every push builds Linux and Windows executables. Grab them from the
 (`v*`) also attach both zips to the GitHub release.
 
 The builds are self-contained: the game data is embedded in the executable,
-so there's nothing to install.
+so there's nothing to install. On desktop, **F11** or **Alt+Enter** switches
+fullscreen, and the game remembers which you chose.
 
 - **Linux** — `chmod +x Casino.x86_64 && ./Casino.x86_64`
 - **Windows** — run `Casino.exe`
@@ -100,6 +101,12 @@ Nothing that was free went behind a paywall, nothing nags, and nothing sells
 chips; [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) has the full list of
 rules the code keeps, and how to publish. Builds that have no store to buy
 from — the desktop builds and the debug APK — come with every pack unlocked.
+
+The **Steam edition** is sold once with everything included: every pack, no
+tip jar, and saves synced by Steam Cloud. It's the desktop game exported with
+the `steam` feature, and it starts fullscreen. The free builds here stay free
+and complete. [docs/STEAM_RELEASE.md](docs/STEAM_RELEASE.md) covers the
+store page, depots, Steam Cloud and the Deck.
 
 ## Games
 
@@ -425,7 +432,8 @@ count is shown under the table.
 | --- | --- |
 | `scripts/save_data.gd` | Everything saved between launches (`SaveData` autoload) |
 | `scripts/bank.gd` | Shared bankroll autoload (`Bank`), saved through `SaveData` |
-| `scripts/store.gd` | What the player owns (`Store` autoload): Google Play Billing, or every pack unlocked where there's no store |
+| `scripts/store.gd` | What the player owns (`Store` autoload): Google Play Billing, the Steam edition with everything included, or every pack unlocked where there's no store |
+| `scripts/window_mode.gd` | Fullscreen on desktop (`WindowMode` autoload): F11 / Alt+Enter, remembered |
 | `scripts/main_menu.gd` + `scenes/main_menu.tscn` | Lobby, with the play-money notice and About box |
 | `scripts/extras.gd` + `scenes/extras.tscn` | Extras: packs, free unlocks and the tip jar |
 | `scripts/modal.gd`, `scripts/locked_pack.gd` | Shared overlay panel, and the cover a locked pack shows |
@@ -453,8 +461,8 @@ count is shown under the table.
 | `scripts/bet_board.gd` | Shared chip-placement board used by roulette, craps and baccarat |
 | `scripts/safe_area.gd` | Notch/cutout-aware margin container |
 | `tests/run_all.gd` + `tests/*_rules.gd` | Rule suites, run by CI |
-| `export_presets.cfg` | Linux, Windows, Android (debug APK) and Android Play (signed App Bundle) presets used by CI |
-| `PRIVACY.md`, `docs/PLAY_RELEASE.md` | The privacy policy, and how to publish on Google Play |
+| `export_presets.cfg` | Linux, Windows, Android (debug APK), Android Play (signed App Bundle), Steam Linux and Steam Windows presets used by CI |
+| `PRIVACY.md`, `docs/PLAY_RELEASE.md`, `docs/STEAM_RELEASE.md` | The privacy policy, and how to publish on Google Play and on Steam |
 | `.github/workflows/build.yml` | Check, export, and release pipeline |
 | `.github/actions/setup-godot/` | Composite action that installs Godot + templates |
 
@@ -473,13 +481,13 @@ godot --headless --path . res://tests/run_all.tscn
 
 | Suite | What it pins down |
 | --- | --- |
-| `save_rules` | The bankroll, notice and scores survive a restart, and the suites never touch a real save |
+| `save_rules` | The bankroll, notice, scores and fullscreen choice survive a restart, About names the right store, and the suites never touch a real save |
 | `layout_fits` | Every scene fits the 1280x720 design viewport |
 | `blackjack_rules` | Shoe composition, the Hi-Lo count against the undealt remainder, both strategy charts and their indices, split stakes, split aces, insurance |
 | `roulette_rules` | Wheel order and colours, the board covering 1-36 once, payouts, and every way a repeat-until-win run can stop |
 | `craps_rules` | The 2d6 distribution, every payout on the table, the 3-4-5x caps, come bets travelling and dying, what a seven-out takes, which winners stay up, what Clear Bets may and may not remove, and that every hit-zone on the felt matches the paint |
 | `baccarat_rules` | All 80 cells of the banker tableau, naturals, pair detection, and commission arithmetic |
-| `store_rules` | Packs start locked and unlock when bought; pending payments unlock nothing; purchases are acknowledged, tips consumed, refunds taken back; restore; free unlocks |
+| `store_rules` | Packs start locked and unlock when bought; pending payments unlock nothing; purchases are acknowledged, tips consumed, refunds taken back; restore; free unlocks; the Steam edition includes every pack, sells nothing and shows no tip jar |
 | `baccarat_coin_rules` | Coin Flip settles every hand exactly as card mode does |
 | `blackjack_trainer_rules` | The charts against the published chart, the quiz against `BlackjackStrategy` over thousands of hands, and the drill's scoring, corrections and Blitz |
 | `count_trainer_rules` | Table order, the hole card counted only when it turns over, 1,500 rounds of basic-strategy seats against an S17 dealer, and the drill's checks and timer |
@@ -514,7 +522,8 @@ godot --headless --path . --export-release "Windows" "$PWD/build/Casino.exe"
 ```
 
 `--export-release` takes the **preset name** from `export_presets.cfg`
-(`Linux` / `Windows`), not the platform name.
+(`Linux` / `Windows`), not the platform name. The Steam edition is the same
+command with `"Steam Linux"` or `"Steam Windows"`.
 
 ## Continuous integration
 
@@ -525,8 +534,9 @@ via *Run workflow*:
    suites, failing the build on any parse error, runtime error, or broken
    rule — including a script error inside a suite, which could otherwise skip
    checks without failing one.
-2. **Export** — builds Linux and Windows in parallel and uploads each as an
-   artifact.
+2. **Export** — builds Linux and Windows, and the Steam edition of each, in
+   parallel and uploads each as an artifact. The Steam artifacts hold only
+   the game, ready to upload as depots.
 3. **Export Android** — builds a debug-signed APK. Godot reads the SDK
    location from Editor Settings rather than the environment, so this job
    generates that file with `--editor --quit` and rewrites the two path keys
@@ -536,8 +546,9 @@ via *Run workflow*:
    App Bundle for the Play Store with Google Play Billing; see
    [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) for the keystore secrets it
    needs.
-5. **Publish release** — on a `v*` tag, zips the builds and attaches them to a
-   GitHub release.
+5. **Publish release** — on a `v*` tag, zips the free builds (Linux, Windows
+   and the debug APK) and attaches them to a GitHub release. The Play bundle
+   and the Steam builds go to their stores, never here.
 
 Godot itself exits `0` even when scripts fail to parse, so
 `.github/scripts/assert-no-godot-errors.sh` scans the logs instead. It ignores

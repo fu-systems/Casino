@@ -141,7 +141,8 @@ Keep the plugin out of commits, or the desktop exports will try to load it.
   nothing until it clears; tip twice in a row.
 - Builds without the `play_store` feature (desktop, the debug APK) have no
   store to buy from, so they unlock every pack and leave the free ones as a
-  tap. Change `Store._ready` if desktop builds are ever sold.
+  tap. The Steam edition (the `steam` feature) is sold whole instead: every
+  pack included and no tip jar — see [STEAM_RELEASE.md](STEAM_RELEASE.md).
 
 ## Later: the App Store
 
